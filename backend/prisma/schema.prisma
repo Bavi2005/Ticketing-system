@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STAFF
+  BRANCH_MANAGER
+  HQ_ADMIN
+}
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+enum TicketStatus {
+  NEW
+  ACKNOWLEDGED
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+model Branch {
+  id String @id @default(cuid())
+  code String @unique
+  name String
+  location String?
+  users User[]
+  tickets Ticket[]
+  createdAt DateTime @default(now())
+}
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  passwordHash String
+  name String
+  role Role @default(STAFF)
+  branchId String?
+  branch Branch? @relation(fields: [branchId], references: [id])
+  tickets Ticket[] @relation("RequesterTickets")
+  assigned Ticket[] @relation("AssigneeTickets")
+  comments TicketComment[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([branchId])
+  @@index([role])
+}
+
+model Ticket {
+  id String @id @default(cuid())
+  reference String @unique
+  title String
+  description String
+  category String
+  priority Priority @default(MEDIUM)
+  status TicketStatus @default(NEW)
+  branchId String
+  branch Branch @relation(fields: [branchId], references: [id])
+  requesterId String
+  requester User @relation("RequesterTickets", fields: [requesterId], references: [id])
+  assigneeId String?
+  assignee User? @relation("AssigneeTickets", fields: [assigneeId], references: [id])
+  responseDueAt DateTime
+  resolutionDueAt DateTime
+  acknowledgedAt DateTime?
+  resolvedAt DateTime?
+  closedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  comments TicketComment[]
+  @@index([branchId, status])
+  @@index([requesterId])
+  @@index([priority])
+}
+
+model TicketComment {
+  id String @id @default(cuid())
+  ticketId String
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId String
+  author User @relation(fields: [authorId], references: [id])
+  message String
+  internal Boolean @default(false)
+  createdAt DateTime @default(now())
+  @@index([ticketId, createdAt])
+}

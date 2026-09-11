@@ -1,0 +1,25 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 9 * * 1' # weekly
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Backend audit
+        run: npm audit --audit-level=high
+        working-directory: backend
+        continue-on-error: true
+      - name: Frontend audit
+        run: npm audit --audit-level=high
+        working-directory: frontend
+        continue-on-error: true

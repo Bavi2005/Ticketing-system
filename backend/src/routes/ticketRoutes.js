@@ -1,0 +1,6 @@
+const express = require('express');
+const { auth } = require('../middleware/auth');
+const c = require('../controllers/ticketController');
+const router = express.Router();
+router.use(auth); router.get('/dashboard', c.dashboard); router.get('/', c.list); router.post('/', c.create); router.patch('/:id', c.update); router.post('/:id/comments', c.comment);
+module.exports = router;
