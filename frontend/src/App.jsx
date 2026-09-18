@@ -25,8 +25,12 @@ import {
   X,
   RefreshCw,
   Layers3,
+  Menu,
   Moon,
+  PanelLeftClose,
+  Settings,
   Sun,
+  UserCircle,
 } from "lucide-react";
 import "./App.css";
 
@@ -173,6 +177,9 @@ export default function App() {
   const [loading, setLoading] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false),
+    [profileOpen, setProfileOpen] = useState(false);
+  const profileMenu = useRef(null);
   const requestId = useRef(0);
   const loadedScope = useRef("");
   const headers = { Authorization: `Bearer ${session?.token}` };
@@ -198,6 +205,14 @@ export default function App() {
     const change = () => setPage(location.hash.slice(1) || "overview");
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
+  }, []);
+  useEffect(() => {
+    const close = (event) => {
+      if (profileMenu.current?.contains(event.target)) return;
+      setProfileOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, []);
   const load = useCallback(async () => {
     if (!session) return;
@@ -293,9 +308,25 @@ export default function App() {
       new: "Raise a service ticket",
     }[page] || "Operations overview";
   return (
-    <div className="shell">
+    <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
-        <Brand />
+        <div className="sidebar-head">
+          <Brand />
+          <button
+            className="sidebar-toggle"
+            aria-label={
+              sidebarCollapsed ? "Open navigation" : "Close navigation"
+            }
+            aria-pressed={sidebarCollapsed}
+            onClick={() => setSidebarCollapsed((value) => !value)}
+          >
+            {sidebarCollapsed ? (
+              <Menu size={18} />
+            ) : (
+              <PanelLeftClose size={18} />
+            )}
+          </button>
+        </div>
         <div className="workspace-label">WORKSPACE</div>
         <nav aria-label="Main navigation">
           {[
@@ -319,9 +350,10 @@ export default function App() {
                   setMetric("total");
                   navigate(key);
                 }}
+                title={name}
               >
                 <Icon size={18} />
-                {name}
+                <span>{name}</span>
                 {page === key && <span className="nav-dot" />}
               </button>
             ))}
@@ -346,17 +378,6 @@ export default function App() {
             <i /> Role-based access
           </span>
         </div>
-        {themeToggle}
-        <div className="profile">
-          <div className="avatar">{initials(session.user.name)}</div>
-          <div>
-            <b>{session.user.name}</b>
-            <small>{hq ? "HQ administrator" : label(session.user.role)}</small>
-          </div>
-          <button aria-label="Sign out" onClick={logout}>
-            <LogOut size={17} />
-          </button>
-        </div>
       </aside>
       <main className="main">
         <div className="topbar">
@@ -377,13 +398,64 @@ export default function App() {
               <span className="refresh-full">Refresh workspace</span>
               <span className="refresh-short">Refresh</span>
             </button>
-            <button
-              className="top-avatar"
-              aria-label="Open my tickets"
-              onClick={() => navigate(manager ? "overview" : "tickets")}
-            >
-              {initials(session.user.name)}
-            </button>
+            <div className="profile-menu" ref={profileMenu}>
+              <button
+                className="profile-trigger"
+                aria-label="Open profile menu"
+                aria-expanded={profileOpen}
+                onClick={() => setProfileOpen((value) => !value)}
+              >
+                <span className="top-avatar">
+                  {initials(session.user.name)}
+                </span>
+                <span>
+                  <b>{session.user.name}</b>
+                  <small>{hq ? "HQ" : manager ? "Manager" : "Staff"}</small>
+                </span>
+                <ChevronRight size={14} />
+              </button>
+              {profileOpen && (
+                <div className="profile-dropdown" role="menu">
+                  <div className="profile-card">
+                    <div className="avatar">{initials(session.user.name)}</div>
+                    <div>
+                      <b>{session.user.name}</b>
+                      <small>
+                        {hq
+                          ? "HQ administrator"
+                          : manager
+                            ? `${session.user.branch?.name || "Branch"} manager`
+                            : "Staff requester"}
+                      </small>
+                    </div>
+                  </div>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      navigate(manager ? "overview" : "tickets");
+                      setProfileOpen(false);
+                    }}
+                  >
+                    <UserCircle size={17} />
+                    Profile details
+                  </button>
+                  <div className="profile-settings">
+                    <span>
+                      <Settings size={16} /> Settings
+                    </span>
+                    {themeToggle}
+                  </div>
+                  <button
+                    role="menuitem"
+                    className="logout-menu"
+                    onClick={logout}
+                  >
+                    <LogOut size={17} />
+                    Log out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="content">
@@ -1205,7 +1277,23 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq, staff }) {
           <h2>Operational scope</h2>
           <ListFilter size={17} />
         </div>
-        <p className="muted">Focus your view.</p>
+        <p className="muted">
+          Focus your view without losing the bigger picture.
+        </p>
+        <div className="scope-snapshot" aria-label="Current scope summary">
+          <div>
+            <span>Tickets</span>
+            <strong>{summary?.total?.toLocaleString() ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Within SLA</span>
+            <strong>{summary?.within?.toLocaleString() ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Missed</span>
+            <strong>{summary?.missed?.toLocaleString() ?? "—"}</strong>
+          </div>
+        </div>
         <label className="scope-label">
           <MapPin size={14} /> ZONES
         </label>
