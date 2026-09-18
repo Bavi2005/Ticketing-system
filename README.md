@@ -1,29 +1,39 @@
 # EngineDesk — Engineering Service Management
 
-A committee-ready demonstration of a branch-to-HQ ticketing system for an engineering company. It captures incidents and service requests, applies priority-based SLA/SLG targets, records updates, and provides controlled operational visibility.
+A responsive engineering operations workspace with live reporting, six service systems, and branch-scoped access.
 
-## Demo access
-
-| Scope | Email | Password |
-| --- | --- | --- |
-| Staff, Branch 1 | `testuser1branch1@test.com` | `password123` |
-| Branch 1 manager | `managerbranch1@test.com` | `admin123` |
-| HQ control | `hq@test.com` | `admin123` |
-
-Each of the three branches has five seeded staff accounts: `testuser1branch1@test.com` through `testuser5branch3@test.com`. Staff use `password123`; managers and HQ use `admin123`.
-
-## Access rules
-
-- Staff can create, view, and comment only on their own tickets.
-- Each branch manager sees and progresses only tickets from their branch.
-- HQ has a cross-branch register, branch load, and SLA-risk view.
-- Critical, high, medium, and low tickets have acknowledgement/resolution targets of 1/4, 4/12, 8/24, and 24/72 hours respectively.
+- Resolved/unresolved trends, followed by Total Tickets, Total Unresolved Tickets, Total Resolved Tickets, Total Missed SLA and Total Within SLA.
+- Every metric opens HVAC, CCTV, Fire Alarm, BAS, Gas System and Elevator, then the matching tickets.
+- This month, last month, this year, all time and inclusive custom dates use Malaysia time (UTC+8), based on ticket creation dates.
+- Right-side filters cover West MY / East MY and state-based branches, including Pahang, Sabah and Sarawak.
+- Staff and branch managers see **all tickets assigned to their own branch**, irrespective of requester. HQ sees all branches.
+- Any authenticated user can submit to any branch. A submission to another branch is visible to that destination branch and HQ; the submitter's viewing scope does not expand.
+- Only managers and HQ change workflow; staff cannot see internal notes. Server-side scope checks apply to lists, reporting, updates and comments.
+- SLA reporting measures resolution: unresolved tickets are checked against the current time, completed tickets against their resolution time. Late resolutions remain missed. Closed tickets count as resolved. Reopening clears completion times and retains the original deadline.
 
 ## Local run
 
-1. Set `DATABASE_URL` and a strong `JWT_SECRET` in `backend/.env` (copy `backend/.env.example`).
-2. Run `npm install` in the root, `backend`, and `frontend` directories.
-3. Run `cd backend && npx prisma db push && node seed.js`.
-4. Run `npm run build --prefix frontend`, then `node start.js` from the project root.
+1. Configure `DATABASE_URL` and a strong `JWT_SECRET` in `backend/.env` (see `.env.example`).
+2. Install dependencies with `npm ci`, `npm ci --prefix backend`, and `npm ci --prefix frontend`.
+3. Prepare a **development/demo database** with `cd backend && npx prisma db push && node seed.js`.
+4. Run `npm run build --prefix frontend`, then `node start.js` at the repository root. Open `http://localhost:8080`.
 
-For a Render + Supabase demo, use the Dockerfile. Configure `DATABASE_URL`, `JWT_SECRET`, and optionally `CORS_ORIGINS`; the container prepares the schema and seeded demo data at startup.
+The historical migration files belong to the previous receipt application. The current demo uses `prisma db push` consistently with its Docker startup; do not apply the legacy migrations to an EngineDesk database. Back up existing databases before schema administration.
+
+## Demo access
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Staff, Selangor | `testuser1branch1@test.com` | `password123` |
+| Selangor manager | `managerbranch1@test.com` | `admin123` |
+| HQ | `hq@test.com` | `admin123` |
+
+The seed provides sixteen state/federal-territory branches, five staff accounts and one manager for each of the original three branches, and sixty sample tickets when the ticket table is empty. Existing account passwords and roles are preserved. The original BR1–BR3 identities become Selangor, Johor and Penang without changing their IDs. Sabah, Sarawak and Labuan belong to East MY; other branches belong to West MY. Existing tickets using retired service categories remain accessible in the full register.
+
+## Verification
+
+- `npm test --prefix backend`: API regression checks for authorization, scope overrides, cross-branch submission, internal notes, validation, Malaysia date boundaries, SLA calculation and workflow transitions.
+- `npm run build --prefix frontend`: production build.
+- `npm run lint --prefix frontend`: lint checks (legacy inactive receipt components retain existing warnings).
+
+Reporting refreshes every minute and on changes; manual refresh is available. The graph groups ticket creation dates by their current resolved/unresolved state, rather than presenting a historical backlog snapshot.

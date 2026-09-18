@@ -1,4 +1,4 @@
-name: loyalty-program
+name: enginedesk
 
 # Self-contained local run: Postgres + the full app (frontend, proxy, backend).
 # Production (Render) instead uses the Dockerfile directly with a managed
@@ -6,7 +6,7 @@ name: loyalty-program
 services:
   app:
     build: .
-    command: ["sh", "-c", "cd backend && npx prisma migrate deploy && node seed.js && cd .. && node start.js"]
+    command: ["sh", "-c", "cd backend && npx prisma db push && node seed.js && cd .. && node start.js"]
     ports:
       - "${PORT:-8080}:8080"
     environment:

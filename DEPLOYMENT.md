@@ -16,12 +16,14 @@ build time; the database is the managed Postgres in Supabase.
    cd backend && node seed.js
    ```
 
-Migrations are applied hand-in-hand with schema changes (`prisma migrate deploy`)
-and are not part of normal startup, so a restart never silently mutates the DB.
+The demo container runs `prisma db push` and the idempotent seed at startup.
+The legacy migration files describe the previous receipt application, not the
+current ticketing schema. Back up existing databases before schema changes.
+Seeding preserves existing account credentials and adds sample tickets only to an empty ticket table.
 
 ## Local — Docker Compose (self-contained)
 
-Brings up Postgres + the app, applies migrations and seeds demo data:
+Brings up Postgres + the app, prepares the ticketing schema and seeds demo data:
 
 ```bash
 docker compose up --build   # app on http://localhost:8080
@@ -33,7 +35,7 @@ docker compose up --build   # app on http://localhost:8080
 cd backend
 cp .env.example .env        # fill DATABASE_URL + JWT_SECRET
 npm install
-npx prisma migrate deploy
+npx prisma db push
 node seed.js
 node src/server.js          # API on :5000
 

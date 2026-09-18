@@ -48,11 +48,11 @@ jobs:
       - name: Root install
         run: npm ci
 
-      - name: Prisma migrate (clean test DB)
-        run: npx prisma migrate deploy
+      - name: Prepare current ticketing schema (clean test DB)
+        run: npx prisma db push
         working-directory: backend
 
-      - name: Backend tests (unit + integration + concurrency)
+      - name: Backend authorization and reporting regression tests
         run: npm test
         working-directory: backend
 
