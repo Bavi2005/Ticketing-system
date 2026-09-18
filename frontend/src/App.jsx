@@ -50,7 +50,7 @@ const statuses = [
 const metrics = [
   ["total", "Total Tickets", Ticket, "blue"],
   ["unresolved", "Total Unresolved Tickets", Clock3, "amber"],
-  ["resolved", "Total Resolved Tickets", CircleCheck, "mint"],
+  ["resolved", "Total Resolved Tickets", CircleCheck, "lavender"],
   ["missed", "Total Missed SLA", BellRing, "rose"],
   ["within", "Total Within SLA", ShieldCheck, "violet"],
 ];
@@ -485,7 +485,7 @@ export default function App() {
                             {metrics.find((m) => m[0] === metric)?.[1]}
                           </div>
                           <div className="panel drill-heading">
-                            <div className="metric-icon mint">
+                            <div className="metric-icon lavender">
                               <Layers3 size={24} />
                             </div>
                             <div>
@@ -729,7 +729,7 @@ function Trend({ summary }) {
         </div>
         <div className="chart-legend">
           <span>
-            <i className="mint-bg" />
+            <i className="lavender-bg" />
             Resolved
           </span>
           <span>
@@ -745,13 +745,13 @@ function Trend({ summary }) {
           aria-label={`Current outcome by ticket creation date: ${summary.resolved} resolved, ${summary.unresolved} unresolved`}
         >
           <defs>
-            <linearGradient id="fillMint" x1="0" y1="0" x2="0" y2="1">
-              <stop stopColor="#5ee5bd" stopOpacity=".22" />
-              <stop offset="1" stopColor="#5ee5bd" stopOpacity="0" />
+            <linearGradient id="fillLavender" x1="0" y1="0" x2="0" y2="1">
+              <stop stopColor="#9a7bce" stopOpacity=".22" />
+              <stop offset="1" stopColor="#9a7bce" stopOpacity="0" />
             </linearGradient>
             <linearGradient id="fillBlue" x1="0" y1="0" x2="0" y2="1">
-              <stop stopColor="#799dfb" stopOpacity=".13" />
-              <stop offset="1" stopColor="#799dfb" stopOpacity="0" />
+              <stop stopColor="#85a9e1" stopOpacity=".13" />
+              <stop offset="1" stopColor="#85a9e1" stopOpacity="0" />
             </linearGradient>
           </defs>
           {[0, 1, 2, 3].map((i) => (
@@ -761,7 +761,7 @@ function Trend({ summary }) {
                 x2="710"
                 y1={40 + (i * 145) / 3}
                 y2={40 + (i * 145) / 3}
-                stroke="#253237"
+                stroke="#e5e0ef"
                 strokeDasharray="4 5"
               />
               <text x="27" y={44 + (i * 145) / 3} textAnchor="end">
@@ -775,13 +775,13 @@ function Trend({ summary }) {
                 <path
                   d={`${path(key)} L ${x(rows.length - 1)} 185 L 48 185 Z`}
                   fill={
-                    key === "resolved" ? "url(#fillMint)" : "url(#fillBlue)"
+                    key === "resolved" ? "url(#fillLavender)" : "url(#fillBlue)"
                   }
                 />
                 <path
                   d={path(key)}
                   fill="none"
-                  stroke={key === "resolved" ? "#5ee5bd" : "#799dfb"}
+                  stroke={key === "resolved" ? "#9a7bce" : "#85a9e1"}
                   strokeWidth="2.5"
                   strokeLinejoin="round"
                 />
@@ -791,7 +791,7 @@ function Trend({ summary }) {
                     cx={x(i)}
                     cy={y(r[key])}
                     r={rows.length === 1 ? 5 : 3}
-                    fill={key === "resolved" ? "#5ee5bd" : "#799dfb"}
+                    fill={key === "resolved" ? "#9a7bce" : "#85a9e1"}
                   />
                 ))}
               </g>
@@ -844,7 +844,7 @@ function Trend({ summary }) {
       </div>
       <div className="chart-bottom">
         <span>
-          <span className="mint">{rate}%</span> resolved in this selection
+          <span className="lavender">{rate}%</span> resolved in this selection
         </span>
         <span>Current status by creation date</span>
       </div>
@@ -933,7 +933,7 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq }) {
         </p>
         <div className="sla-key">
           <span>
-            <i className="mint-bg" /> Within SLA
+            <i className="lavender-bg" /> Within SLA
           </span>
           <b>{summary?.within ?? "—"}</b>
         </div>
@@ -1073,7 +1073,7 @@ function TicketList({ tickets, open, compact }) {
                   </span>
                 </td>
                 <td>
-                  <span className={t.slaMissed ? "rose" : "mint"}>
+                  <span className={t.slaMissed ? "rose" : "lavender"}>
                     {t.slaMissed
                       ? "Missed SLA"
                       : ["RESOLVED", "CLOSED"].includes(t.status)
@@ -1245,7 +1245,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
         </div>
       </form>
       <section className="panel form-guide">
-        <span className="metric-icon mint">
+        <span className="metric-icon lavender">
           <Clock3 size={23} />
         </span>
         <h2>A clear path to resolution.</h2>
