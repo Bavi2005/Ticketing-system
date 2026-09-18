@@ -306,6 +306,7 @@ export default function App() {
       services: "Explore service systems",
       tickets: manager ? "Ticket register" : "My tickets",
       new: "Raise a service ticket",
+      profile: "Profile details",
     }[page] || "Operations overview";
   return (
     <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -432,7 +433,7 @@ export default function App() {
                   <button
                     role="menuitem"
                     onClick={() => {
-                      navigate(manager ? "overview" : "tickets");
+                      navigate("profile");
                       setProfileOpen(false);
                     }}
                   >
@@ -576,6 +577,21 @@ export default function App() {
                 load();
               }}
               cancel={() => navigate("overview")}
+            />
+          ) : page === "profile" ? (
+            <ProfileSettings
+              session={session}
+              headers={headers}
+              themeToggle={themeToggle}
+              back={() => navigate(manager ? "overview" : "tickets")}
+              done={(nextSession) => {
+                localStorage.setItem(
+                  "ticketSession",
+                  JSON.stringify(nextSession),
+                );
+                setSession(nextSession);
+                setNotice("Profile details updated.");
+              }}
             />
           ) : (
             <div className="dashboard-layout">
@@ -889,6 +905,156 @@ function Login({ onLogin, themeToggle }) {
           </p>
         </form>
       </div>
+    </div>
+  );
+}
+function ProfileSettings({ session, headers, themeToggle, back, done }) {
+  const [form, setForm] = useState({
+    name: session.user.name || "",
+    email: session.user.email || "",
+    currentPassword: "",
+    newPassword: "",
+  });
+  const [busy, setBusy] = useState(false),
+    [message, setMessage] = useState(""),
+    [error, setError] = useState("");
+  const update = (key, value) =>
+    setForm((current) => ({ ...current, [key]: value }));
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const payload = {
+        name: form.name,
+        email: form.email,
+        currentPassword: form.currentPassword || undefined,
+        newPassword: form.newPassword || undefined,
+      };
+      const { data } = await api.put("/api/auth/profile", payload, {
+        headers,
+      });
+      done(data);
+      setForm({
+        name: data.user.name || "",
+        email: data.user.email || "",
+        currentPassword: "",
+        newPassword: "",
+      });
+      setMessage("Your profile and credentials are updated.");
+    } catch (e) {
+      setError(
+        e.response?.data?.message ||
+          "Unable to update profile. Please check the details.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="profile-page">
+      <button className="secondary profile-back" onClick={back}>
+        <ChevronRight size={17} />
+        Back
+      </button>
+      <form className="panel profile-editor" onSubmit={submit}>
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">ACCOUNT SETTINGS</p>
+            <h2>Profile details</h2>
+          </div>
+          <Settings size={19} />
+        </div>
+        <div className="profile-summary">
+          <div className="avatar">{initials(session.user.name)}</div>
+          <div>
+            <b>{session.user.name}</b>
+            <span>{session.user.email}</span>
+          </div>
+          <dl>
+            <div>
+              <dt>Role</dt>
+              <dd>{label(session.user.role)}</dd>
+            </div>
+            <div>
+              <dt>Branch</dt>
+              <dd>{session.user.branch?.name || "All branches"}</dd>
+            </div>
+          </dl>
+        </div>
+        {message && (
+          <div className="notice" role="status">
+            <CheckCheck size={17} />
+            {message}
+          </div>
+        )}
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="two">
+          <label>
+            Display name
+            <input
+              required
+              value={form.name}
+              onChange={(e) => update("name", e.target.value)}
+              autoComplete="name"
+            />
+          </label>
+          <label>
+            Login email
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={(e) => update("email", e.target.value)}
+              autoComplete="username"
+            />
+          </label>
+        </div>
+        <div className="credential-grid">
+          <label>
+            Current password
+            <input
+              type="password"
+              value={form.currentPassword}
+              onChange={(e) => update("currentPassword", e.target.value)}
+              autoComplete="current-password"
+              placeholder="Required to change password"
+            />
+          </label>
+          <label>
+            New password
+            <input
+              type="password"
+              value={form.newPassword}
+              onChange={(e) => update("newPassword", e.target.value)}
+              autoComplete="new-password"
+              minLength={6}
+              placeholder="At least 6 characters"
+            />
+          </label>
+        </div>
+        <div className="profile-theme">
+          <div>
+            <b>Theme preference</b>
+            <span>Choose the workspace tone for this browser.</span>
+          </div>
+          {themeToggle}
+        </div>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={back}>
+            Back
+          </button>
+          <button className="primary" disabled={busy}>
+            {busy ? "Saving…" : "Save profile"}
+            <ArrowUpRight size={17} />
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

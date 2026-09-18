@@ -1,5 +1,7 @@
 const express = require("express");
 const request = require("supertest");
+process.env.DATABASE_URL ||= "postgresql://test:test@localhost:5432/test";
+process.env.JWT_SECRET ||= "ticketing-unit-test-secret";
 jest.mock("../src/utils/prisma", () => ({
   ticket: {
     findMany: jest.fn(),
@@ -8,11 +10,13 @@ jest.mock("../src/utils/prisma", () => ({
     update: jest.fn(),
   },
   branch: { findMany: jest.fn(), findUnique: jest.fn() },
-  user: { findFirst: jest.fn() },
+  user: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
   ticketComment: { create: jest.fn() },
 }));
 const prisma = require("../src/utils/prisma");
 const controller = require("../src/controllers/ticketController");
+const authController = require("../src/controllers/authController");
+const bcrypt = require("bcryptjs");
 const { scope, filters, missed } = require("../src/utils/ticketing");
 const app = express();
 app.use(express.json());
@@ -30,6 +34,7 @@ app.post("/tickets", controller.create);
 app.patch("/tickets/:id", controller.update);
 app.post("/tickets/:id/comments", controller.comment);
 app.get("/metadata", controller.metadata);
+app.put("/profile", authController.updateProfile);
 app.use((e, req, res, next) =>
   res.status(e.status || 500).json({ message: e.message }),
 );
@@ -215,6 +220,77 @@ test("staff cannot change workflow or post internal notes", async () => {
   expect(prisma.ticketComment.create.mock.lastCall[0].data.internal).toBe(
     false,
   );
+});
+test("profile update changes own name, email and password with current password", async () => {
+  const hash = await bcrypt.hash("oldpass1", 4);
+  prisma.user.findUnique
+    .mockResolvedValueOnce({
+      id: "alice",
+      email: "old@test.com",
+      name: "Old Name",
+      role: "STAFF",
+      branchId: "pahang",
+      branch: { id: "pahang", name: "Pahang" },
+      passwordHash: hash,
+    })
+    .mockResolvedValueOnce(null);
+  prisma.user.update.mockResolvedValue({
+    id: "alice",
+    email: "new@test.com",
+    name: "New Name",
+    role: "STAFF",
+    branchId: "pahang",
+    branch: { id: "pahang", name: "Pahang" },
+  });
+  const r = await request(app).put("/profile").send({
+    name: "New Name",
+    email: "new@test.com",
+    currentPassword: "oldpass1",
+    newPassword: "newpass1",
+  });
+  expect(r.status).toBe(200);
+  expect(r.body.user).toMatchObject({
+    email: "new@test.com",
+    name: "New Name",
+  });
+  expect(r.body.user.passwordHash).toBeUndefined();
+  expect(r.body.token).toBeTruthy();
+  expect(prisma.user.update.mock.lastCall[0].data.passwordHash).toBeTruthy();
+});
+test("profile update rejects duplicate email and wrong current password", async () => {
+  const hash = await bcrypt.hash("oldpass1", 4);
+  prisma.user.findUnique
+    .mockResolvedValueOnce({
+      id: "alice",
+      email: "old@test.com",
+      name: "Old Name",
+      role: "STAFF",
+      passwordHash: hash,
+    })
+    .mockResolvedValueOnce({ id: "bob", email: "taken@test.com" });
+  expect(
+    (
+      await request(app).put("/profile").send({
+        email: "taken@test.com",
+      })
+    ).status,
+  ).toBe(409);
+  prisma.user.findUnique.mockResolvedValueOnce({
+    id: "alice",
+    email: "old@test.com",
+    name: "Old Name",
+    role: "STAFF",
+    passwordHash: hash,
+  });
+  expect(
+    (
+      await request(app).put("/profile").send({
+        currentPassword: "wrongpass",
+        newPassword: "newpass1",
+      })
+    ).status,
+  ).toBe(401);
+  expect(prisma.user.update).not.toHaveBeenCalled();
 });
 test("reopening clears completion timestamps and reassignment cannot cross branch boundaries", async () => {
   prisma.ticket.findFirst.mockResolvedValue({

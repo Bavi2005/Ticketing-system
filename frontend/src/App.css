@@ -528,6 +528,83 @@ small {
 .logout-menu {
   color: var(--text-danger);
 }
+.profile-page {
+  max-width: 920px;
+  display: grid;
+  gap: 18px;
+}
+.profile-back {
+  width: fit-content;
+}
+.profile-back svg {
+  transform: rotate(180deg);
+}
+.profile-editor {
+  display: grid;
+  gap: 24px;
+}
+.profile-editor > .muted {
+  font-size: 14px;
+}
+.profile-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(260px, 0.8fr);
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.profile-summary b,
+.profile-theme b {
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+}
+.profile-summary span,
+.profile-theme span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.profile-summary dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.profile-summary dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.profile-summary dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  text-transform: capitalize;
+}
+.credential-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.profile-theme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.profile-theme .theme-toggle {
+  width: 230px;
+  margin: 0;
+}
 .content {
   padding: 38px;
   max-width: 1700px;
@@ -1456,12 +1533,16 @@ footer > span:first-child {
   gap: 7px;
 }
 .ticket-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
   background: var(--surface);
   color: var(--text-purple);
   border: 1px solid var(--border);
   border-radius: 16px;
   width: min(690px, 94vw);
   max-height: 90vh;
+  overflow: auto;
   padding: 32px;
   box-shadow: 0 30px 100px var(--shadow-color);
 }
@@ -2954,6 +3035,23 @@ textarea {
   }
   .scope-snapshot strong {
     font-size: 20px;
+  }
+  .profile-page {
+    max-width: none;
+  }
+  .profile-summary,
+  .credential-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-summary dl {
+    grid-template-columns: 1fr;
+  }
+  .profile-theme {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .profile-theme .theme-toggle {
+    width: 100%;
   }
   .zone-list {
     grid-template-columns: 1fr;
