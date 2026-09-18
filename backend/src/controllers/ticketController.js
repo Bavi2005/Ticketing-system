@@ -36,7 +36,7 @@ const handle = (fn) => async (req, res, next) => {
 exports.metadata = handle(async (req, res) => {
   const branches = await prisma.branch.findMany({
     where:
-      req.user.role === "HQ_ADMIN"
+      req.user.role === "HQ_ADMIN" || req.user.role === "STAFF"
         ? {}
         : { id: req.user.branchId || "__NO_BRANCH__" },
     orderBy: { name: "asc" },
@@ -202,17 +202,15 @@ exports.comment = handle(async (req, res) => {
     typeof req.body.message === "string" ? req.body.message.trim() : "";
   if (!message || message.length > 5000)
     fail("Comment must contain 1–5,000 characters");
-  res
-    .status(201)
-    .json(
-      await prisma.ticketComment.create({
-        data: {
-          ticketId: ticket.id,
-          authorId: req.user.id,
-          message,
-          internal: req.body.internal === true && req.user.role !== "STAFF",
-        },
-        include: { author: { select: { name: true, role: true } } },
-      }),
-    );
+  res.status(201).json(
+    await prisma.ticketComment.create({
+      data: {
+        ticketId: ticket.id,
+        authorId: req.user.id,
+        message,
+        internal: req.body.internal === true && req.user.role !== "STAFF",
+      },
+      include: { author: { select: { name: true, role: true } } },
+    }),
+  );
 });

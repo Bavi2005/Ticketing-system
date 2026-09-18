@@ -6,8 +6,8 @@ A responsive engineering operations workspace with live reporting, six service s
 - Every metric opens HVAC, CCTV, Fire Alarm, BAS, Gas System and Elevator, then the matching tickets.
 - This month, last month, this year, all time and inclusive custom dates use Malaysia time (UTC+8), based on ticket creation dates.
 - Right-side filters cover West MY / East MY and state-based branches, including Pahang, Sabah and Sarawak.
-- Staff and branch managers see **all tickets assigned to their own branch**, irrespective of requester. HQ sees all branches.
-- Any authenticated user can submit to any branch. A submission to another branch is visible to that destination branch and HQ; the submitter's viewing scope does not expand.
+- Staff see **only tickets they submitted**, across all destination branches. Branch managers see **all tickets assigned to their own branch**. HQ sees all tickets.
+- Any authenticated user can submit to any branch. A submission to another branch remains visible to its requester, the destination branch’s managers and HQ. Other staff cannot view it.
 - Only managers and HQ change workflow; staff cannot see internal notes. Server-side scope checks apply to lists, reporting, updates and comments.
 - SLA reporting measures resolution: unresolved tickets are checked against the current time, completed tickets against their resolution time. Late resolutions remain missed. Closed tickets count as resolved. Reopening clears completion times and retains the original deadline.
 
@@ -36,4 +36,4 @@ The seed provides sixteen state/federal-territory branches, five staff accounts 
 - `npm run build --prefix frontend`: production build.
 - `npm run lint --prefix frontend`: lint checks (legacy inactive receipt components retain existing warnings).
 
-Reporting refreshes every minute and on changes; manual refresh is available. The graph groups ticket creation dates by their current resolved/unresolved state, rather than presenting a historical backlog snapshot.
+Staff have a personal ticket tracker with progress steps, ticket history and recent updates, refreshed every 15 seconds. Manager/HQ reporting refreshes every minute and on changes; manual refresh is available. The sidebar and login offer a persistent light/dark purple-and-blue theme switch. The graph groups ticket creation dates by their current resolved/unresolved state, rather than presenting a historical backlog snapshot.

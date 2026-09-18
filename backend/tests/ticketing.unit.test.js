@@ -52,21 +52,23 @@ beforeEach(() => {
   prisma.ticket.findMany.mockResolvedValue([ticket]);
   prisma.branch.findMany.mockResolvedValue([]);
 });
-test("staff and managers share branch scope, HQ has company scope, missing branch fails closed", () => {
+test("staff have requester scope, managers have branch scope, HQ has company scope; missing identity fails closed", () => {
   expect(scope({ role: "STAFF", branchId: "pahang", id: "alice" })).toEqual({
-    branchId: "pahang",
+    requesterId: "alice",
   });
   expect(scope({ role: "BRANCH_MANAGER", branchId: "pahang" })).toEqual({
     branchId: "pahang",
   });
   expect(scope({ role: "HQ_ADMIN" })).toEqual({});
-  expect(scope({ role: "STAFF" }).branchId).toBe("__NO_BRANCH__");
+  expect(scope({ role: "STAFF" }).requesterId).toBe("__NO_USER__");
+  expect(scope({ role: "BRANCH_MANAGER" }).branchId).toBe("__NO_BRANCH__");
+  expect(scope({ role: "UNKNOWN" })).toEqual({ id: "__NO_ACCESS__" });
 });
-test("list and dashboard cannot override branch scope through a query", async () => {
+test("list and dashboard cannot override requester scope through a query", async () => {
   for (const path of ["/tickets", "/dashboard"]) {
     expect((await request(app).get(`${path}?branchId=sabah`)).status).toBe(200);
     expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({
-      branchId: "pahang",
+      requesterId: "alice",
       AND: [{ branchId: "sabah" }],
     });
   }
@@ -191,7 +193,7 @@ test("out-of-scope IDs cannot be updated or commented on", async () => {
   ).toBe(404);
   expect(prisma.ticket.findFirst.mock.lastCall[0].where).toEqual({
     id: "other",
-    branchId: "pahang",
+    requesterId: "alice",
   });
   expect(prisma.ticket.update).not.toHaveBeenCalled();
   expect(prisma.ticketComment.create).not.toHaveBeenCalled();
@@ -248,4 +250,36 @@ test("HQ reads all branches and receives internal notes", async () => {
   const r = await request(app).get("/tickets").set("x-role", "HQ_ADMIN");
   expect(r.body[0].comments).toHaveLength(2);
   expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({});
+});
+
+test("manager list and dashboard retain branch isolation", async () => {
+  for (const path of ["/tickets", "/dashboard"]) {
+    await request(app)
+      .get(`${path}?branchId=sabah`)
+      .set("x-role", "BRANCH_MANAGER");
+    expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({
+      branchId: "pahang",
+      AND: [{ branchId: "sabah" }],
+    });
+  }
+});
+
+test("staff can comment on their own submission to another branch", async () => {
+  prisma.ticket.findFirst.mockResolvedValue({
+    ...ticket,
+    requesterId: "alice",
+    branchId: "sabah",
+  });
+  prisma.ticketComment.create.mockResolvedValue({ id: "comment" });
+  expect(
+    (
+      await request(app)
+        .post("/tickets/t1/comments")
+        .send({ message: "Any update?" })
+    ).status,
+  ).toBe(201);
+  expect(prisma.ticket.findFirst.mock.lastCall[0].where).toEqual({
+    id: "t1",
+    requesterId: "alice",
+  });
 });

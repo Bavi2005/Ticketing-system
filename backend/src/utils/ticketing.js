@@ -27,7 +27,11 @@ const missed = (t, now = new Date()) =>
 const scope = (user) =>
   user.role === "HQ_ADMIN"
     ? {}
-    : { branchId: user.branchId || "__NO_BRANCH__" };
+    : user.role === "STAFF"
+      ? { requesterId: user.id || "__NO_USER__" }
+      : user.role === "BRANCH_MANAGER"
+        ? { branchId: user.branchId || "__NO_BRANCH__" }
+        : { id: "__NO_ACCESS__" };
 const fail = (message) => {
   throw Object.assign(new Error(message), { status: 400 });
 };
