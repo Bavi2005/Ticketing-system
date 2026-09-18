@@ -22,13 +22,17 @@ The historical migration files belong to the previous receipt application. The c
 
 ## Demo access
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Staff, Selangor | `testuser1branch1@test.com` | `password123` |
-| Selangor manager | `managerbranch1@test.com` | `admin123` |
-| HQ | `hq@test.com` | `admin123` |
+| Role             | Email                     | Password      |
+| ---------------- | ------------------------- | ------------- |
+| Staff demo 1     | `testuser1@test.com`      | `password123` |
+| Staff demo 2     | `testuser2@test.com`      | `password123` |
+| Staff demo 3     | `testuser3@test.com`      | `password123` |
+| Staff demo 4     | `testuser4@test.com`      | `password123` |
+| Staff demo 5     | `testuser5@test.com`      | `password123` |
+| Selangor manager | `managerbranch1@test.com` | `admin123`    |
+| HQ               | `hq@test.com`             | `admin123`    |
 
-The seed provides sixteen state/federal-territory branches, five staff accounts and one manager for each of the original three branches, and sixty sample tickets when the ticket table is empty. Existing account passwords and roles are preserved. The original BR1–BR3 identities become Selangor, Johor and Penang without changing their IDs. Sabah, Sarawak and Labuan belong to East MY; other branches belong to West MY. Existing tickets using retired service categories remain accessible in the full register.
+The seed provides sixteen state/federal-territory branches, five staff accounts, one manager for each of the original three branches, and sixty sample tickets when the ticket table is empty. The five staff demo emails are branch-free (`testuser1@test.com` through `testuser5@test.com`), and older `testuser1branch1@test.com`-style demo accounts are renamed or archived on reseed. Existing account passwords and roles are preserved. The original BR1–BR3 identities become Selangor, Johor and Penang without changing their IDs. Sabah, Sarawak and Labuan belong to East MY; other branches belong to West MY. Existing tickets using retired service categories remain accessible in the full register.
 
 ## Verification
 

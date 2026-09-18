@@ -62,24 +62,68 @@ async function main() {
         },
       }),
     );
-    for (let i = 1; i <= 5; i++)
-      await prisma.user.upsert({
-        where: { email: `testuser${i}branch${n}@test.com` },
-        update: {},
-        create: {
-          email: `testuser${i}branch${n}@test.com`,
-          name: `Test User ${i} · Branch ${n}`,
-          branchId: branch.id,
-          role: "STAFF",
-          passwordHash: staffHash,
+  }
+  for (let i = 1; i <= 5; i++) {
+    const email = `testuser${i}@test.com`;
+    const legacyEmail = `testuser${i}branch1@test.com`;
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (!existing) {
+      const legacy = await prisma.user.findUnique({
+        where: { email: legacyEmail },
+      });
+      if (legacy) {
+        await prisma.user.update({
+          where: { id: legacy.id },
+          data: {
+            email,
+            name: `Test User ${i}`,
+            branchId: branches[0].id,
+            role: "STAFF",
+          },
+        });
+        continue;
+      }
+    }
+    await prisma.user.upsert({
+      where: { email },
+      update: {
+        name: `Test User ${i}`,
+        branchId: branches[0].id,
+        role: "STAFF",
+      },
+      create: {
+        email,
+        name: `Test User ${i}`,
+        branchId: branches[0].id,
+        role: "STAFF",
+        passwordHash: staffHash,
+      },
+    });
+  }
+  for (let branchNumber = 1; branchNumber <= 3; branchNumber++) {
+    for (let i = 1; i <= 5; i++) {
+      const legacyEmail = `testuser${i}branch${branchNumber}@test.com`;
+      const legacy = await prisma.user.findUnique({
+        where: { email: legacyEmail },
+      });
+      if (!legacy) continue;
+      await prisma.user.update({
+        where: { id: legacy.id },
+        data: {
+          email: `archived-${legacyEmail}`,
+          name: `Archived Test User ${i}`,
         },
       });
+    }
   }
   if ((await prisma.ticket.count()) === 0) {
-    const staff = await prisma.user.findMany({
-      where: { role: "STAFF" },
-      orderBy: { email: "asc" },
-    });
+    const staff = [];
+    for (let i = 1; i <= 5; i++)
+      staff.push(
+        await prisma.user.findUnique({
+          where: { email: `testuser${i}@test.com` },
+        }),
+      );
     const samples = [
       ["Air handling unit not cooling", "HVAC", "HIGH", "IN_PROGRESS"],
       ["Loading bay camera offline", "CCTV", "MEDIUM", "ACKNOWLEDGED"],

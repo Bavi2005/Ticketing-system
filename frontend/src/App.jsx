@@ -57,6 +57,14 @@ const metrics = [
   ["within", "Total Within SLA", ShieldCheck, "violet"],
 ];
 const label = (value) => value.replaceAll("_", " ").toLowerCase();
+const initials = (name = "") =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "ED";
 const dateText = (value) =>
   new Date(value).toLocaleString("en-MY", {
     timeZone: "Asia/Kuala_Lumpur",
@@ -340,9 +348,7 @@ export default function App() {
         </div>
         {themeToggle}
         <div className="profile">
-          <div className="avatar">
-            {session.user.name.slice(0, 2).toUpperCase()}
-          </div>
+          <div className="avatar">{initials(session.user.name)}</div>
           <div>
             <b>{session.user.name}</b>
             <small>{hq ? "HQ administrator" : label(session.user.role)}</small>
@@ -354,19 +360,31 @@ export default function App() {
       </aside>
       <main className="main">
         <div className="topbar">
-          <span>
-            <span className="muted">Workspace</span>
+          <div className="topbar-nav" aria-label="Workspace shortcuts">
+            <button onClick={() => navigate("overview")}>Workspace</button>
             <ChevronRight size={13} />
-            {hq
-              ? "National operations"
-              : manager
-                ? session.user.branch?.name || "Branch operations"
-                : "My tickets"}
-          </span>
-          <span className="secure">
-            <ShieldCheck size={14} /> Secure workspace{" "}
-            <span className="top-avatar">{hq ? "HQ" : "BR"}</span>
-          </span>
+            <button onClick={() => navigate(page)}>
+              {hq
+                ? "National operations"
+                : manager
+                  ? session.user.branch?.name || "Branch operations"
+                  : "My tickets"}
+            </button>
+          </div>
+          <div className="topbar-actions">
+            <button className="secure" onClick={load}>
+              <ShieldCheck size={14} />
+              <span className="refresh-full">Refresh workspace</span>
+              <span className="refresh-short">Refresh</span>
+            </button>
+            <button
+              className="top-avatar"
+              aria-label="Open my tickets"
+              onClick={() => navigate(manager ? "overview" : "tickets")}
+            >
+              {initials(session.user.name)}
+            </button>
+          </div>
         </div>
         <div className="content">
           <header className="page-heading">
@@ -1387,16 +1405,16 @@ function TicketList({ tickets, open, compact }) {
                     <b>{t.title}</b>
                   </button>
                 </td>
-                <td>
+                <td data-label="Branch / system">
                   {t.branch?.name}
                   <small>{t.category}</small>
                 </td>
-                <td>
+                <td data-label="Status">
                   <span className={`badge ${t.status.toLowerCase()}`}>
                     {label(t.status)}
                   </span>
                 </td>
-                <td>
+                <td data-label="SLA">
                   <span className={t.slaMissed ? "rose" : "lavender"}>
                     {t.slaMissed
                       ? "Missed SLA"
