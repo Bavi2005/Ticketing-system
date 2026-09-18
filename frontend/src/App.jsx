@@ -25,6 +25,8 @@ import {
   X,
   RefreshCw,
   Layers3,
+  Moon,
+  Sun,
 } from "lucide-react";
 import "./App.css";
 
@@ -104,10 +106,57 @@ function Brand() {
     </div>
   );
 }
+function ThemeToggle({ theme, toggle }) {
+  return (
+    <button
+      className="theme-toggle"
+      role="switch"
+      aria-checked={theme === "dark"}
+      aria-label="Dark mode"
+      onClick={toggle}
+    >
+      {theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}
+      <span>
+        {theme === "dark" ? "Dark mode" : "Light mode"}
+        <small>Purple & blue</small>
+      </span>
+      <span className="theme-switch">
+        <span />
+      </span>
+    </button>
+  );
+}
 export default function App() {
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("engineDeskTheme") === "dark"
+        ? "dark"
+        : "light";
+    } catch {
+      return "light";
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("engineDeskTheme", theme);
+    } catch {
+      /* Theme remains usable without browser storage. */
+    }
+  }, [theme]);
+  const themeToggle = (
+    <ThemeToggle
+      theme={theme}
+      toggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+    />
+  );
   const [session, setSession] = useState(storedSession);
   const [page, setPage] = useState(location.hash.slice(1) || "overview");
-  const [filters, setFilters] = useState(initialFilters);
+  const [filters, setFilters] = useState(() =>
+    session?.user.role === "STAFF"
+      ? { ...initialFilters(), preset: "all", ...rangeFor("all") }
+      : initialFilters(),
+  );
   const [metric, setMetric] = useState("total"),
     [category, setCategory] = useState("");
   const [data, setData] = useState(null),
@@ -117,6 +166,7 @@ export default function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const requestId = useRef(0);
+  const loadedScope = useRef("");
   const headers = { Authorization: `Bearer ${session?.token}` };
   const logout = useCallback(() => {
     requestId.current++;
@@ -146,7 +196,12 @@ export default function App() {
     const id = ++requestId.current;
     setLoading(true);
     setError("");
-    setData(null);
+    const scopeKey = JSON.stringify([
+      session.token,
+      filters,
+      page === "overview" ? "total" : metric,
+    ]);
+    if (loadedScope.current !== scopeKey) setData(null);
     try {
       const params = {
         from: filters.from || undefined,
@@ -165,7 +220,13 @@ export default function App() {
         api.get("/api/tickets/metadata", config),
       ]);
       if (id === requestId.current) {
+        loadedScope.current = scopeKey;
         setData({ tickets: tickets.data, summary: summary.data });
+        setSelected((previous) =>
+          previous
+            ? tickets.data.find((t) => t.id === previous.id) || previous
+            : null,
+        );
         setMetadata(meta.data);
       }
     } catch (e) {
@@ -188,14 +249,23 @@ export default function App() {
   }, [load]);
   useEffect(() => {
     if (!session) return;
-    const timer = setInterval(load, 60000);
+    const timer = setInterval(
+      load,
+      session.user.role === "STAFF" ? 15000 : 60000,
+    );
     return () => clearInterval(timer);
   }, [load, session]);
   if (!session)
     return (
       <Login
+        themeToggle={themeToggle}
         onLogin={(s) => {
           localStorage.setItem("ticketSession", JSON.stringify(s));
+          setFilters(
+            s.user.role === "STAFF"
+              ? { ...initialFilters(), preset: "all", ...rangeFor("all") }
+              : initialFilters(),
+          );
           setSession(s);
         }}
       />
@@ -209,9 +279,9 @@ export default function App() {
   };
   const title =
     {
-      overview: "Operations overview",
+      overview: manager ? "Operations overview" : "My service desk",
       services: "Explore service systems",
-      tickets: "Ticket register",
+      tickets: manager ? "Ticket register" : "My tickets",
       new: "Raise a service ticket",
     }[page] || "Operations overview";
   return (
@@ -221,39 +291,54 @@ export default function App() {
         <div className="workspace-label">WORKSPACE</div>
         <nav aria-label="Main navigation">
           {[
-            ["overview", LayoutDashboard, "Overview"],
+            [
+              "overview",
+              LayoutDashboard,
+              manager ? "Overview" : "My dashboard",
+            ],
             ["services", Layers3, "Service systems"],
-            ["tickets", Ticket, "Ticket register"],
+            ["tickets", Ticket, manager ? "Ticket register" : "My tickets"],
             ["new", Plus, "Raise a ticket"],
-          ].map(([key, Icon, name]) => (
-            <button
-              key={key}
-              className={page === key ? "nav-active" : ""}
-              aria-current={page === key ? "page" : undefined}
-              onClick={() => {
-                setCategory("");
-                setMetric("total");
-                navigate(key);
-              }}
-            >
-              <Icon size={18} />
-              {name}
-              {page === key && <span className="nav-dot" />}
-            </button>
-          ))}
+          ]
+            .filter(([key]) => manager || key !== "services")
+            .map(([key, Icon, name]) => (
+              <button
+                key={key}
+                className={page === key ? "nav-active" : ""}
+                aria-current={page === key ? "page" : undefined}
+                onClick={() => {
+                  setCategory("");
+                  setMetric("total");
+                  navigate(key);
+                }}
+              >
+                <Icon size={18} />
+                {name}
+                {page === key && <span className="nav-dot" />}
+              </button>
+            ))}
         </nav>
         <div className="sidebar-note">
           <ShieldCheck size={23} />
-          <b>{hq ? "HQ command centre" : "Branch workspace"}</b>
+          <b>
+            {hq
+              ? "HQ command centre"
+              : manager
+                ? "Branch workspace"
+                : "My service workspace"}
+          </b>
           <p>
             {hq
               ? "A connected view of every branch. Every system. Every service."
-              : "One shared view for your branch’s service requests."}
+              : manager
+                ? "One shared view for your branch’s service requests."
+                : "Track only the service tickets you have submitted."}
           </p>
           <span>
             <i /> Role-based access
           </span>
         </div>
+        {themeToggle}
         <div className="profile">
           <div className="avatar">
             {session.user.name.slice(0, 2).toUpperCase()}
@@ -274,7 +359,9 @@ export default function App() {
             <ChevronRight size={13} />
             {hq
               ? "National operations"
-              : session.user.branch?.name || "Branch operations"}
+              : manager
+                ? session.user.branch?.name || "Branch operations"
+                : "My tickets"}
           </span>
           <span className="secure">
             <ShieldCheck size={14} /> Secure workspace{" "}
@@ -293,7 +380,9 @@ export default function App() {
               </h1>
               <p className="subtitle">
                 {page === "overview"
-                  ? "Every system connected. Every service accounted for."
+                  ? manager
+                    ? "Every system connected. Every service accounted for."
+                    : "Your requests, their progress, and the latest updates. All in one place."
                   : page === "new"
                     ? "Tell us what needs attention. We’ll keep the resolution on track."
                     : "From the big picture to the details that matter."}
@@ -408,8 +497,20 @@ export default function App() {
                 ) : (
                   data && (
                     <div key={page} className="page-enter">
-                      {page === "overview" ||
-                      !["services", "tickets"].includes(page) ? (
+                      {!manager && page === "overview" ? (
+                        <MyDashboard
+                          tickets={data.tickets}
+                          summary={data.summary}
+                          open={setSelected}
+                          onFilter={(key) => {
+                            setMetric(key);
+                            setCategory("");
+                            navigate("tickets");
+                          }}
+                          onCreate={() => navigate("new")}
+                        />
+                      ) : page === "overview" ||
+                        !["services", "tickets"].includes(page) ? (
                         <>
                           <Trend summary={data.summary} />
                           <div className="metric-cards">
@@ -568,13 +669,18 @@ export default function App() {
                   )
                 )}
               </div>
-              <ScopePanel
-                metadata={metadata}
-                filters={filters}
-                setFilters={setFilters}
-                summary={data?.summary}
-                hq={hq}
-              />
+              {!manager ? (
+                <MyUpdates tickets={data?.tickets || []} open={setSelected} />
+              ) : (
+                <ScopePanel
+                  metadata={metadata}
+                  filters={filters}
+                  setFilters={setFilters}
+                  summary={data?.summary}
+                  hq={hq}
+                  staff={!manager}
+                />
+              )}
             </div>
           )}
           <footer>
@@ -602,7 +708,7 @@ export default function App() {
     </div>
   );
 }
-function Login({ onLogin }) {
+function Login({ onLogin, themeToggle }) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
@@ -649,6 +755,7 @@ function Login({ onLogin }) {
         <small>ENGINE DESK / SERVICE INTELLIGENCE</small>
       </div>
       <div className="login-form">
+        {themeToggle}
         <form onSubmit={submit}>
           <span className="login-badge">
             <ShieldCheck size={16} /> SECURE WORKSPACE
@@ -693,6 +800,198 @@ function Login({ onLogin }) {
         </form>
       </div>
     </div>
+  );
+}
+function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
+  const active = tickets.filter(
+    (t) => !["RESOLVED", "CLOSED"].includes(t.status),
+  );
+  const stages = ["Submitted", "Acknowledged", "In progress", "Resolved"];
+  const stageFor = (status) =>
+    ({
+      NEW: 0,
+      ACKNOWLEDGED: 1,
+      IN_PROGRESS: 2,
+      WAITING: 2,
+      RESOLVED: 3,
+      CLOSED: 3,
+    })[status] ?? 0;
+  return (
+    <>
+      <section className="personal-welcome panel">
+        <div>
+          <p className="eyebrow">YOUR PERSONAL TICKET TRACKER</p>
+          <h2>
+            {active.length
+              ? `${active.length} request${active.length === 1 ? " is" : "s are"} moving toward resolution.`
+              : "You’re all caught up."}
+          </h2>
+          <p>
+            Open a ticket to check its progress or message your service team.
+          </p>
+        </div>
+        <span className="live-chip">
+          <i /> UPDATES EVERY 15s
+        </span>
+      </section>
+      <div className="personal-metrics">
+        {[
+          ["total", "My tickets", Ticket],
+          ["unresolved", "In progress", Clock3],
+          ["resolved", "Resolved", CircleCheck],
+        ].map(([key, title, Icon]) => (
+          <button
+            className="metric-card"
+            key={key}
+            onClick={() => onFilter(key)}
+          >
+            <div>
+              <span className="metric-icon">
+                <Icon size={20} />
+              </span>
+              <ArrowUpRight size={16} />
+            </div>
+            <strong>{summary[key]}</strong>
+            <span>{title}</span>
+            <small>
+              View your requests <ChevronRight size={12} />
+            </small>
+          </button>
+        ))}
+      </div>
+      {active.length > 0 && (
+        <>
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">WHAT’S HAPPENING NOW</p>
+              <h2>Track your active requests</h2>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => onFilter("unresolved")}
+            >
+              View all <ArrowUpRight size={15} />
+            </button>
+          </div>
+          <div className="personal-progress">
+            {active.slice(0, 3).map((t) => (
+              <button
+                key={t.id}
+                className="progress-card panel"
+                onClick={() => open(t)}
+              >
+                <div className="progress-heading">
+                  <span>
+                    {t.reference} · {t.category}
+                  </span>
+                  <span className={`badge ${t.status.toLowerCase()}`}>
+                    {label(t.status)}
+                  </span>
+                </div>
+                <h3>{t.title}</h3>
+                <p>
+                  <MapPin size={12} />
+                  {t.branch?.name}
+                </p>
+                <ol className="ticket-steps" aria-label="Resolution progress">
+                  {stages.map((stage, index) => (
+                    <li
+                      key={stage}
+                      className={index <= stageFor(t.status) ? "step-done" : ""}
+                    >
+                      <span>
+                        {index < stageFor(t.status) ? (
+                          <CheckCheck size={12} />
+                        ) : (
+                          index + 1
+                        )}
+                      </span>
+                      <small>{stage}</small>
+                    </li>
+                  ))}
+                </ol>
+                <div className="progress-foot">
+                  <span>
+                    {t.status === "WAITING"
+                      ? "Request on hold · open for details"
+                      : `Resolution target: ${dateText(t.resolutionDueAt)}`}
+                  </span>
+                  <ArrowUpRight size={16} />
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="section-heading">
+        <h2>Your ticket history</h2>
+        <button className="text-button" onClick={onCreate}>
+          <Plus size={15} /> Raise a ticket
+        </button>
+      </div>
+      <TicketList tickets={tickets} open={open} />
+    </>
+  );
+}
+function MyUpdates({ tickets, open }) {
+  const updates = tickets
+    .flatMap((ticket) => [
+      {
+        ticket,
+        date: ticket.updatedAt || ticket.createdAt,
+        message: `Status: ${label(ticket.status)}`,
+        author: ticket.reference,
+        id: `${ticket.id}-status`,
+      },
+      ...ticket.comments.map((c) => ({
+        ticket,
+        date: c.createdAt,
+        message: c.message,
+        author: c.author?.name || "Service team",
+        id: c.id,
+      })),
+    ])
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 5);
+  return (
+    <aside className="scope personal-updates">
+      <section className="panel">
+        <div className="panel-heading">
+          <h2>Latest updates</h2>
+          <Activity size={18} />
+        </div>
+        <p className="muted">From your tickets in this selection.</p>
+        <div className="update-feed">
+          {updates.length ? (
+            updates.map((update) => (
+              <button key={update.id} onClick={() => open(update.ticket)}>
+                <span className="update-dot" />
+                <b>{update.author}</b>
+                <p>{update.message}</p>
+                <small>{dateText(update.date)}</small>
+              </button>
+            ))
+          ) : (
+            <div className="empty">
+              <BellRing size={25} />
+              <p>Your ticket updates will appear here.</p>
+            </div>
+          )}
+        </div>
+      </section>
+      <section className="panel personal-privacy">
+        <ShieldCheck size={26} />
+        <h2>Your requests. Your space.</h2>
+        <p>
+          Only tickets you submitted appear here, including requests sent to
+          other branches.
+        </p>
+        <p>Your destination branch’s managers and HQ handle the resolution.</p>
+        <span className="live-chip">
+          <i /> AUTOMATICALLY REFRESHED
+        </span>
+      </section>
+    </aside>
   );
 }
 function Trend({ summary }) {
@@ -746,12 +1045,16 @@ function Trend({ summary }) {
         >
           <defs>
             <linearGradient id="fillLavender" x1="0" y1="0" x2="0" y2="1">
-              <stop stopColor="#9a7bce" stopOpacity=".22" />
-              <stop offset="1" stopColor="#9a7bce" stopOpacity="0" />
+              <stop stopColor="var(--chart-purple)" stopOpacity=".22" />
+              <stop
+                offset="1"
+                stopColor="var(--chart-purple)"
+                stopOpacity="0"
+              />
             </linearGradient>
             <linearGradient id="fillBlue" x1="0" y1="0" x2="0" y2="1">
-              <stop stopColor="#85a9e1" stopOpacity=".13" />
-              <stop offset="1" stopColor="#85a9e1" stopOpacity="0" />
+              <stop stopColor="var(--chart-blue)" stopOpacity=".13" />
+              <stop offset="1" stopColor="var(--chart-blue)" stopOpacity="0" />
             </linearGradient>
           </defs>
           {[0, 1, 2, 3].map((i) => (
@@ -761,7 +1064,7 @@ function Trend({ summary }) {
                 x2="710"
                 y1={40 + (i * 145) / 3}
                 y2={40 + (i * 145) / 3}
-                stroke="#e5e0ef"
+                stroke="var(--chart-grid)"
                 strokeDasharray="4 5"
               />
               <text x="27" y={44 + (i * 145) / 3} textAnchor="end">
@@ -781,7 +1084,11 @@ function Trend({ summary }) {
                 <path
                   d={path(key)}
                   fill="none"
-                  stroke={key === "resolved" ? "#9a7bce" : "#85a9e1"}
+                  stroke={
+                    key === "resolved"
+                      ? "var(--chart-purple)"
+                      : "var(--chart-blue)"
+                  }
                   strokeWidth="2.5"
                   strokeLinejoin="round"
                 />
@@ -791,7 +1098,11 @@ function Trend({ summary }) {
                     cx={x(i)}
                     cy={y(r[key])}
                     r={rows.length === 1 ? 5 : 3}
-                    fill={key === "resolved" ? "#9a7bce" : "#85a9e1"}
+                    fill={
+                      key === "resolved"
+                        ? "var(--chart-purple)"
+                        : "var(--chart-blue)"
+                    }
                   />
                 ))}
               </g>
@@ -812,12 +1123,23 @@ function Trend({ summary }) {
                 {r.date.slice(5)}
               </text>
             ))}
+          {hover && (
+            <line
+              x1={x(rows.indexOf(hover))}
+              x2={x(rows.indexOf(hover))}
+              y1="25"
+              y2="185"
+              stroke="var(--chart-purple)"
+              strokeDasharray="3 4"
+              opacity=".6"
+            />
+          )}
           {rows.map((r, i) => (
             <rect
               key={r.date}
-              x={x(i) - 10}
+              x={x(i) - 325 / Math.max(rows.length - 1, 1)}
               y="20"
-              width="20"
+              width={650 / Math.max(rows.length - 1, 1)}
               height="170"
               fill="transparent"
               tabIndex="0"
@@ -851,7 +1173,7 @@ function Trend({ summary }) {
     </section>
   );
 }
-function ScopePanel({ metadata, filters, setFilters, summary, hq }) {
+function ScopePanel({ metadata, filters, setFilters, summary, hq, staff }) {
   const branches = (metadata?.branches || []).filter(
     (b) => !filters.zone || b.zone === filters.zone,
   );
@@ -891,7 +1213,7 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq }) {
             className={!filters.branchId ? "active" : ""}
             onClick={() => setFilters({ ...filters, branchId: "" })}
           >
-            {hq ? "All branches" : "My branch"}
+            {hq || staff ? "All branches" : "My branch"}
             <span>{branches.length}</span>
           </button>
           {branches.map((b) => (
@@ -952,7 +1274,9 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq }) {
         <ShieldCheck size={15} />
         {hq
           ? "Visibility across all branches"
-          : "Visibility limited to your branch"}
+          : staff
+            ? "Only tickets you submitted"
+            : "Visibility limited to your branch"}
       </div>
     </aside>
   );
@@ -1138,7 +1462,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
         { headers },
       );
       done(
-        `${data.reference} created for ${data.branch.name}. ${data.branchId !== user.branchId && user.role !== "HQ_ADMIN" ? "The destination branch and HQ can track it; it is outside your viewing scope." : "Your service team can now track this request."}`,
+        `${data.reference} created for ${data.branch.name}. ${data.branchId !== user.branchId && user.role === "BRANCH_MANAGER" ? "The destination branch and HQ can track it; it is outside your viewing scope." : "You can track this request in your ticket register."}`,
       );
     } catch (e) {
       setError(e.response?.data?.message || "Unable to submit. Please retry.");
@@ -1270,8 +1594,8 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
           </div>
         ))}
         <p className="muted">
-          <ShieldCheck size={14} /> Requests are visible to the assigned branch
-          and HQ.
+          <ShieldCheck size={14} /> Requests are visible to you, the destination
+          branch’s managers and HQ.
         </p>
       </section>
     </div>
@@ -1285,6 +1609,11 @@ function TicketModal({ ticket, manager, headers, close, changed }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const dialog = useRef(null);
+  useEffect(() => {
+    // Synchronise the open detail view with freshly polled server data.
+    // eslint-disable-next-line react/set-state-in-effect
+    setCurrent(ticket);
+  }, [ticket]);
   useEffect(() => {
     const el = dialog.current;
     el.showModal();
