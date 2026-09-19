@@ -505,7 +505,7 @@ export default function App() {
               </button>
             </div>
           )}
-          {page !== "new" && (
+          {page !== "new" && (manager || page !== "overview") && (
             <div className="filterbar">
               <div className="filter-title">
                 <CalendarDays size={17} />
@@ -594,7 +594,7 @@ export default function App() {
               }}
             />
           ) : (
-            <div className="dashboard-layout">
+            <div className={`dashboard-layout ${manager ? "" : "user-dashboard-layout"}`}>
               <div className="dashboard-main">
                 {loading && !data ? (
                   <div className="loading panel" role="status">
@@ -746,23 +746,25 @@ export default function App() {
                               </>
                             )}
                           </div>
-                          <div className="category-tabs">
-                            <button
-                              className={!category ? "active" : ""}
-                              onClick={() => setCategory("")}
-                            >
-                              All systems
-                            </button>
-                            {categories.map((c) => (
+                          {manager && (
+                            <div className="category-tabs">
                               <button
-                                key={c}
-                                className={category === c ? "active" : ""}
-                                onClick={() => setCategory(c)}
+                                className={!category ? "active" : ""}
+                                onClick={() => setCategory("")}
                               >
-                                {c}
+                                All systems
                               </button>
-                            ))}
-                          </div>
+                              {categories.map((c) => (
+                                <button
+                                  key={c}
+                                  className={category === c ? "active" : ""}
+                                  onClick={() => setCategory(c)}
+                                >
+                                  {c}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <TicketList
                             tickets={data.tickets.filter(
                               (t) => !category || t.category === category,
@@ -775,9 +777,7 @@ export default function App() {
                   )
                 )}
               </div>
-              {!manager ? (
-                <MyUpdates tickets={data?.tickets || []} open={setSelected} />
-              ) : (
+              {manager && (
                 <ScopePanel
                   metadata={metadata}
                   filters={filters}
@@ -1115,6 +1115,21 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
           </button>
         ))}
       </div>
+      <section className="personal-note" aria-label="Ticket privacy information">
+        <span className="personal-note-icon">
+          <ShieldCheck size={19} />
+        </span>
+        <div>
+          <b>Your requests. Your space.</b>
+          <p>
+            Only tickets you submit appear here. The destination branch and HQ
+            manage the resolution while progress refreshes automatically.
+          </p>
+        </div>
+        <span className="live-chip">
+          <i /> LIVE
+        </span>
+      </section>
       {active.length > 0 && (
         <>
           <div className="section-heading">
@@ -1187,67 +1202,6 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
       </div>
       <TicketList tickets={tickets} open={open} />
     </>
-  );
-}
-function MyUpdates({ tickets, open }) {
-  const updates = tickets
-    .flatMap((ticket) => [
-      {
-        ticket,
-        date: ticket.updatedAt || ticket.createdAt,
-        message: `Status: ${label(ticket.status)}`,
-        author: ticket.reference,
-        id: `${ticket.id}-status`,
-      },
-      ...ticket.comments.map((c) => ({
-        ticket,
-        date: c.createdAt,
-        message: c.message,
-        author: c.author?.name || "Service team",
-        id: c.id,
-      })),
-    ])
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 5);
-  return (
-    <aside className="scope personal-updates">
-      <section className="panel">
-        <div className="panel-heading">
-          <h2>Latest updates</h2>
-          <Activity size={18} />
-        </div>
-        <p className="muted">From your tickets in this selection.</p>
-        <div className="update-feed">
-          {updates.length ? (
-            updates.map((update) => (
-              <button key={update.id} onClick={() => open(update.ticket)}>
-                <span className="update-dot" />
-                <b>{update.author}</b>
-                <p>{update.message}</p>
-                <small>{dateText(update.date)}</small>
-              </button>
-            ))
-          ) : (
-            <div className="empty">
-              <BellRing size={25} />
-              <p>Your ticket updates will appear here.</p>
-            </div>
-          )}
-        </div>
-      </section>
-      <section className="panel personal-privacy">
-        <ShieldCheck size={26} />
-        <h2>Your requests. Your space.</h2>
-        <p>
-          Only tickets you submitted appear here, including requests sent to
-          other branches.
-        </p>
-        <p>Your destination branch’s managers and HQ handle the resolution.</p>
-        <span className="live-chip">
-          <i /> AUTOMATICALLY REFRESHED
-        </span>
-      </section>
-    </aside>
   );
 }
 function Trend({ summary }) {
