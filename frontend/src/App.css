@@ -1,37 +1,41 @@
 /* Both modes use the same purple/blue palette with distinct readable surfaces. */
 :root {
-  --canvas: #d7c5e9;
-  --sidebar: #cbb4e1;
-  --surface: #eaddf4;
-  --surface-soft: #e1d2ef;
-  --purple-soft: #dac6eb;
-  --blue-soft: #d2dcf0;
-  --purple-fill: #c5a5df;
-  --blue-fill: #b9cbee;
-  --purple: #9570be;
-  --blue: #7293cc;
-  --text: #30213f;
-  --text-muted: #655273;
-  --text-purple: #6b438f;
-  --text-blue: #3e6096;
+  --canvas: #ffffff;
+  --main-bg: #ffffff;
+  --sidebar: #d9ccfb;
+  --topbar: #d7e8ff;
+  --surface: #ffffff;
+  --surface-soft: #f7f3ff;
+  --purple-soft: #eee6ff;
+  --blue-soft: #e9f3ff;
+  --purple-fill: #cebaf6;
+  --blue-fill: #bfdcff;
+  --purple: #8d6bc3;
+  --blue: #668fc9;
+  --text: #2d2439;
+  --text-muted: #6f647d;
+  --text-purple: #674292;
+  --text-blue: #3f6598;
   --text-danger: #9d3b66;
   --danger-surface: #eccddd;
-  --border: #c9b2dc;
-  --border-strong: #ae8ccc;
-  --ambient: #bd9bdd40;
-  --shadow-color: #5d347719;
+  --border: #e3d9f1;
+  --border-strong: #b99bd7;
+  --ambient: #c6b1ed33;
+  --shadow-color: #4f33751a;
   --chart-purple: #8c5cb6;
   --chart-blue: #648bc7;
   --chart-grid: #c9b5db;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
-  --canvas: #191423;
-  --sidebar: #221a32;
-  --surface: #2d233f;
-  --surface-soft: #322844;
-  --purple-soft: #3a2b50;
-  --blue-soft: #28354d;
+  --canvas: #21162f;
+  --main-bg: #21162f;
+  --sidebar: #301d48;
+  --topbar: #392252;
+  --surface: #2c1d3d;
+  --surface-soft: #36244a;
+  --purple-soft: #422b59;
+  --blue-soft: #302d54;
   --purple-fill: #55406f;
   --blue-fill: #374f73;
   --purple: #b89ade;
@@ -173,7 +177,9 @@ small {
   grid-template-columns: 88px minmax(0, 1fr);
 }
 .sidebar {
-  background: var(--canvas);
+  background:
+    radial-gradient(circle at 20% 5%, rgba(255,255,255,.34), transparent 28%),
+    linear-gradient(165deg, var(--sidebar), var(--blue-soft));
   border-right: 1px solid var(--border);
   padding: 26px 20px 20px;
   position: sticky;
@@ -378,11 +384,7 @@ small {
 }
 .main {
   min-width: 0;
-  background: radial-gradient(
-    ellipse at 55% 0,
-    var(--ambient),
-    transparent 45%
-  );
+  background: var(--main-bg);
 }
 .topbar {
   height: 76px;
@@ -393,6 +395,14 @@ small {
   padding: 0 38px;
   font-size: 14px;
   color: var(--text);
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background:
+    radial-gradient(circle at 75% 0, rgba(255,255,255,.42), transparent 28%),
+    linear-gradient(100deg, var(--topbar), var(--purple-soft));
+  backdrop-filter: blur(14px);
+  box-shadow: 0 6px 22px var(--shadow-color);
 }
 .topbar-nav,
 .topbar-actions {
@@ -725,7 +735,7 @@ h1 > span {
   min-width: 0;
 }
 .panel {
-  background: linear-gradient(125deg, var(--surface), var(--canvas));
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 28px;
@@ -863,7 +873,7 @@ h1 > span {
   padding: 22px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--surface), var(--canvas));
+  background: var(--surface);
   text-align: left;
   min-width: 0;
 }
@@ -2639,6 +2649,40 @@ textarea {
 .personal-metrics .metric-card small {
   font-size: 10px;
 }
+.user-dashboard-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.personal-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin: -8px 0 30px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(100deg, var(--purple-soft), var(--blue-soft));
+}
+.personal-note-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--text-purple);
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+}
+.personal-note b {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+}
+.personal-note p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
 .personal-progress {
   display: grid;
   gap: 14px;
@@ -2823,6 +2867,13 @@ textarea {
     font-size: 10px;
   }
   .personal-metrics .metric-card > div > svg {
+    display: none;
+  }
+  .personal-note {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+  .personal-note .live-chip {
     display: none;
   }
   .ticket-steps small {
