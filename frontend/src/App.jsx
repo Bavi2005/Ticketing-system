@@ -11,9 +11,6 @@ import {
   ChevronRight,
   CircleCheck,
   Clock3,
-  Fan,
-  Flame,
-  Gauge,
   LayoutDashboard,
   ListFilter,
   LogOut,
@@ -22,10 +19,8 @@ import {
   Search,
   ShieldCheck,
   Ticket,
-  Video,
   X,
   RefreshCw,
-  Layers3,
   Menu,
   PanelLeftClose,
   Settings,
@@ -42,7 +37,6 @@ const categories = [
   "Gas System",
   "Elevator",
 ];
-const icons = [Fan, Video, BellRing, Gauge, Flame, Layers3];
 const priorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const statuses = [
   "NEW",
@@ -279,12 +273,11 @@ export default function App() {
   const drill = (key) => {
     setMetric(key);
     setCategory("");
-    navigate("services");
+    navigate("tickets");
   };
   const title =
     {
       overview: manager ? "Operations overview" : "My service desk",
-      services: "Explore service systems",
       tickets: manager ? "Ticket register" : "My ticket",
       new: "Raise a service ticket",
       profile: "Profile details",
@@ -318,12 +311,11 @@ export default function App() {
               LayoutDashboard,
               manager ? "Overview" : "My dashboard",
             ],
-            ["services", Layers3, "Service systems"],
             ["tickets", Ticket, manager ? "Ticket register" : "My ticket"],
             ["new", Plus, "Raise a ticket"],
             ["reporting", BarChart3, "Reporting"],
           ]
-            .filter(([key]) => manager || !["services", "reporting"].includes(key))
+            .filter(([key]) => manager || key !== "reporting")
             .map(([key, Icon, name]) => (
               <button
                 key={key}
@@ -576,68 +568,10 @@ export default function App() {
                                   {data.summary[key].toLocaleString()}
                                 </strong>
                                 <span>{name}</span>
-                                <small>
-                                  Explore service systems{" "}
-                                  <ChevronRight size={12} />
-                                </small>
+                                <small>View tickets <ChevronRight size={12} /></small>
                               </button>
                             ))}
                           </div>
-                          <CategoryGrid
-                            summary={data.summary}
-                            onSelect={(name) => {
-                              setMetric("total");
-                              setCategory(name);
-                              navigate("tickets");
-                            }}
-                          />
-                        </>
-                      ) : page === "services" ? (
-                        <>
-                          <div className="breadcrumb">
-                            <button onClick={() => navigate("overview")}>
-                              Overview
-                            </button>
-                            <ChevronRight size={14} />
-                            {metrics.find((m) => m[0] === metric)?.[1]}
-                          </div>
-                          <div className="panel drill-heading">
-                            <div className="metric-icon lavender">
-                              <Layers3 size={24} />
-                            </div>
-                            <div>
-                              <h2>
-                                {metrics.find((m) => m[0] === metric)?.[1]}
-                              </h2>
-                              <p className="muted">
-                                Choose a service system to view its tickets in
-                                this reporting scope.
-                              </p>
-                            </div>
-                            <strong>{data.summary[metric]}</strong>
-                          </div>
-                          <CategoryGrid
-                            summary={data.summary}
-                            onSelect={(name) => {
-                              setCategory(name);
-                              navigate("tickets");
-                            }}
-                          />
-                          {data.tickets.some(
-                            (t) => !categories.includes(t.category),
-                          ) && (
-                            <div className="notice">
-                              Some historical tickets use retired categories.
-                              <button
-                                onClick={() => {
-                                  setCategory("");
-                                  navigate("tickets");
-                                }}
-                              >
-                                View all tickets
-                              </button>
-                            </div>
-                          )}
                         </>
                       ) : (
                         <>
@@ -646,9 +580,7 @@ export default function App() {
                               Overview
                             </button>
                             <ChevronRight size={14} />
-                            <button onClick={() => navigate("services")}>
-                              {metrics.find((m) => m[0] === metric)?.[1]}
-                            </button>
+                            {metrics.find((m) => m[0] === metric)?.[1]}
                             {category && (
                               <>
                                 <ChevronRight size={14} />
@@ -1236,33 +1168,6 @@ function SlaHealth({ summary }) {
           tickets against their resolution time.
         </small>
       </section>
-  );
-}
-function CategoryGrid({ summary, onSelect }) {
-  return (
-    <div className="category-grid">
-      {categories.map((name, i) => {
-        const Icon = icons[i];
-        return (
-          <button
-            className="category-card"
-            key={name}
-            onClick={() => onSelect(name)}
-          >
-            <span className={`system-icon system-${i}`}>
-              <Icon size={22} />
-            </span>
-            <ArrowUpRight size={15} className="category-arrow" />
-            <b>{name}</b>
-            <span>
-              {summary.categories.find((c) => c.name === name)?.count || 0}{" "}
-              tickets
-              <ChevronRight size={12} />
-            </span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 function TicketList({ tickets, open, compact }) {
