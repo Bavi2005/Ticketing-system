@@ -6,6 +6,7 @@ import {
   BellRing,
   Building2,
   CalendarDays,
+  BarChart3,
   CheckCheck,
   ChevronRight,
   CircleCheck,
@@ -26,10 +27,8 @@ import {
   RefreshCw,
   Layers3,
   Menu,
-  Moon,
   PanelLeftClose,
   Settings,
-  Sun,
   UserCircle,
 } from "lucide-react";
 import "./App.css";
@@ -77,10 +76,28 @@ const dateText = (value) =>
   });
 const dateKey = (d) => d.toISOString().slice(0, 10);
 function rangeFor(preset) {
-  const now = new Date(Date.now() + 8 * 3600000),
-    y = now.getUTCFullYear(),
-    m = now.getUTCMonth();
+  // Work with calendar dates in Malaysia (UTC+8), matching the API boundaries.
+  const now = new Date(Date.now() + 8 * 3600000);
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const d = now.getUTCDate();
+  const day = new Date(Date.UTC(y, m, d));
   if (preset === "all") return { from: "", to: "" };
+  if (preset === "today") {
+    const today = dateKey(day);
+    return { from: today, to: today };
+  }
+  if (preset === "yesterday") {
+    const yesterday = dateKey(new Date(day.getTime() - 86400000));
+    return { from: yesterday, to: yesterday };
+  }
+  if (preset === "week") {
+    const mondayOffset = (day.getUTCDay() + 6) % 7;
+    const thisMonday = new Date(day.getTime() - mondayOffset * 86400000);
+    const lastMonday = new Date(thisMonday.getTime() - 7 * 86400000);
+    const lastSunday = new Date(thisMonday.getTime() - 86400000);
+    return { from: dateKey(lastMonday), to: dateKey(lastSunday) };
+  }
   if (preset === "last")
     return {
       from: dateKey(new Date(Date.UTC(y, m - 1, 1))),
@@ -118,50 +135,15 @@ function Brand() {
     </div>
   );
 }
-function ThemeToggle({ theme, toggle }) {
-  return (
-    <button
-      className="theme-toggle"
-      role="switch"
-      aria-checked={theme === "dark"}
-      aria-label="Dark mode"
-      onClick={toggle}
-    >
-      {theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}
-      <span>
-        {theme === "dark" ? "Dark mode" : "Light mode"}
-        <small>Purple & blue</small>
-      </span>
-      <span className="theme-switch">
-        <span />
-      </span>
-    </button>
-  );
-}
 export default function App() {
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("engineDeskTheme") === "dark"
-        ? "dark"
-        : "light";
-    } catch {
-      return "light";
-    }
-  });
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.theme = "light";
     try {
-      localStorage.setItem("engineDeskTheme", theme);
+      localStorage.setItem("engineDeskTheme", "light");
     } catch {
-      /* Theme remains usable without browser storage. */
+      /* Light mode remains active without browser storage. */
     }
-  }, [theme]);
-  const themeToggle = (
-    <ThemeToggle
-      theme={theme}
-      toggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-    />
-  );
+  }, []);
   const [session, setSession] = useState(storedSession);
   const [page, setPage] = useState(location.hash.slice(1) || "overview");
   const [filters, setFilters] = useState(() =>
@@ -281,7 +263,6 @@ export default function App() {
   if (!session)
     return (
       <Login
-        themeToggle={themeToggle}
         onLogin={(s) => {
           localStorage.setItem("ticketSession", JSON.stringify(s));
           setFilters(
@@ -304,9 +285,10 @@ export default function App() {
     {
       overview: manager ? "Operations overview" : "My service desk",
       services: "Explore service systems",
-      tickets: manager ? "Ticket register" : "My tickets",
+      tickets: manager ? "Ticket register" : "My ticket",
       new: "Raise a service ticket",
       profile: "Profile details",
+      reporting: "Reporting",
     }[page] || "Operations overview";
   return (
     <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -337,10 +319,11 @@ export default function App() {
               manager ? "Overview" : "My dashboard",
             ],
             ["services", Layers3, "Service systems"],
-            ["tickets", Ticket, manager ? "Ticket register" : "My tickets"],
+            ["tickets", Ticket, manager ? "Ticket register" : "My ticket"],
             ["new", Plus, "Raise a ticket"],
+            ["reporting", BarChart3, "Reporting"],
           ]
-            .filter(([key]) => manager || key !== "services")
+            .filter(([key]) => manager || !["services", "reporting"].includes(key))
             .map(([key, Icon, name]) => (
               <button
                 key={key}
@@ -359,29 +342,41 @@ export default function App() {
               </button>
             ))}
         </nav>
-        <div className="sidebar-note">
-          <ShieldCheck size={23} />
-          <b>
-            {hq
-              ? "HQ command centre"
-              : manager
-                ? "Branch workspace"
-                : "My service workspace"}
-          </b>
-          <p>
-            {hq
-              ? "A connected view of every branch. Every system. Every service."
-              : manager
-                ? "One shared view for your branch’s service requests."
-                : "Track only the service tickets you have submitted."}
-          </p>
-          <span>
-            <i /> Role-based access
-          </span>
+        <div className="sidebar-profile profile-menu" ref={profileMenu}>
+          <button
+            className="profile-trigger"
+            aria-label="Open profile menu"
+            aria-expanded={profileOpen}
+            onClick={() => setProfileOpen((value) => !value)}
+          >
+            <span className="top-avatar">{initials(session.user.name)}</span>
+            <span>
+              <b>{session.user.name}</b>
+              <small>{hq ? "HQ" : manager ? "Manager" : "Staff"}</small>
+            </span>
+            <ChevronRight size={14} />
+          </button>
+          {profileOpen && (
+            <div className="profile-dropdown" role="menu">
+              <div className="profile-card">
+                <div className="avatar">{initials(session.user.name)}</div>
+                <div>
+                  <b>{session.user.name}</b>
+                  <small>{hq ? "HQ administrator" : manager ? `${session.user.branch?.name || "Branch"} manager` : "Staff requester"}</small>
+                </div>
+              </div>
+              <button role="menuitem" onClick={() => { navigate("profile"); setProfileOpen(false); }}>
+                <UserCircle size={17} /> Profile details
+              </button>
+              <button role="menuitem" className="logout-menu" onClick={logout}>
+                <LogOut size={17} /> Log out
+              </button>
+            </div>
+          )}
         </div>
       </aside>
       <main className="main">
-        <div className="topbar">
+        {manager && <div className="topbar">
           <div className="topbar-nav" aria-label="Workspace shortcuts">
             <button onClick={() => navigate("overview")}>Workspace</button>
             <ChevronRight size={13} />
@@ -399,66 +394,8 @@ export default function App() {
               <span className="refresh-full">Refresh workspace</span>
               <span className="refresh-short">Refresh</span>
             </button>
-            <div className="profile-menu" ref={profileMenu}>
-              <button
-                className="profile-trigger"
-                aria-label="Open profile menu"
-                aria-expanded={profileOpen}
-                onClick={() => setProfileOpen((value) => !value)}
-              >
-                <span className="top-avatar">
-                  {initials(session.user.name)}
-                </span>
-                <span>
-                  <b>{session.user.name}</b>
-                  <small>{hq ? "HQ" : manager ? "Manager" : "Staff"}</small>
-                </span>
-                <ChevronRight size={14} />
-              </button>
-              {profileOpen && (
-                <div className="profile-dropdown" role="menu">
-                  <div className="profile-card">
-                    <div className="avatar">{initials(session.user.name)}</div>
-                    <div>
-                      <b>{session.user.name}</b>
-                      <small>
-                        {hq
-                          ? "HQ administrator"
-                          : manager
-                            ? `${session.user.branch?.name || "Branch"} manager`
-                            : "Staff requester"}
-                      </small>
-                    </div>
-                  </div>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      navigate("profile");
-                      setProfileOpen(false);
-                    }}
-                  >
-                    <UserCircle size={17} />
-                    Profile details
-                  </button>
-                  <div className="profile-settings">
-                    <span>
-                      <Settings size={16} /> Settings
-                    </span>
-                    {themeToggle}
-                  </div>
-                  <button
-                    role="menuitem"
-                    className="logout-menu"
-                    onClick={logout}
-                  >
-                    <LogOut size={17} />
-                    Log out
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
-        </div>
+        </div>}
         <div className="content">
           <header className="page-heading">
             <div>
@@ -473,7 +410,7 @@ export default function App() {
                 {page === "overview"
                   ? manager
                     ? "Every system connected. Every service accounted for."
-                    : "Your requests, their progress, and the latest updates. All in one place."
+                    : "Follow your active service requests and their latest updates."
                   : page === "new"
                     ? "Tell us what needs attention. We’ll keep the resolution on track."
                     : "From the big picture to the details that matter."}
@@ -525,6 +462,9 @@ export default function App() {
                 }
               >
                 <option value="month">This month</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="week">Last week</option>
                 <option value="last">Last month</option>
                 <option value="year">This year</option>
                 <option value="all">All time</option>
@@ -582,7 +522,6 @@ export default function App() {
             <ProfileSettings
               session={session}
               headers={headers}
-              themeToggle={themeToggle}
               back={() => navigate(manager ? "overview" : "tickets")}
               done={(nextSession) => {
                 localStorage.setItem(
@@ -593,6 +532,8 @@ export default function App() {
                 setNotice("Profile details updated.");
               }}
             />
+          ) : page === "reporting" && manager ? (
+            <ReportingPanel />
           ) : (
             <div className={`dashboard-layout ${manager ? "" : "user-dashboard-layout"}`}>
               <div className="dashboard-main">
@@ -618,7 +559,6 @@ export default function App() {
                       ) : page === "overview" ||
                         !["services", "tickets"].includes(page) ? (
                         <>
-                          <Trend summary={data.summary} />
                           <div className="metric-cards">
                             {metrics.map(([key, name, Icon, tone]) => (
                               <button
@@ -643,18 +583,6 @@ export default function App() {
                               </button>
                             ))}
                           </div>
-                          <div className="section-heading">
-                            <div>
-                              <p className="eyebrow">YOUR SERVICE ECOSYSTEM</p>
-                              <h2>Six systems. One workspace.</h2>
-                            </div>
-                            <button
-                              className="text-button"
-                              onClick={() => drill("total")}
-                            >
-                              Explore all <ArrowUpRight size={15} />
-                            </button>
-                          </div>
                           <CategoryGrid
                             summary={data.summary}
                             onSelect={(name) => {
@@ -662,24 +590,6 @@ export default function App() {
                               setCategory(name);
                               navigate("tickets");
                             }}
-                          />
-                          <div className="section-heading">
-                            <h2>Latest service requests</h2>
-                            <button
-                              className="text-button"
-                              onClick={() => {
-                                setMetric("total");
-                                setCategory("");
-                                navigate("tickets");
-                              }}
-                            >
-                              View register <ArrowUpRight size={15} />
-                            </button>
-                          </div>
-                          <TicketList
-                            tickets={data.tickets.slice(0, 5)}
-                            open={setSelected}
-                            compact
                           />
                         </>
                       ) : page === "services" ? (
@@ -777,7 +687,11 @@ export default function App() {
                   )
                 )}
               </div>
-              {manager && (
+              {!manager ? (
+                <aside className="scope user-health-panel">
+                  <SlaHealth summary={data?.summary} />
+                </aside>
+              ) : (
                 <ScopePanel
                   metadata={metadata}
                   filters={filters}
@@ -814,7 +728,7 @@ export default function App() {
     </div>
   );
 }
-function Login({ onLogin, themeToggle }) {
+function Login({ onLogin }) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
@@ -861,7 +775,6 @@ function Login({ onLogin, themeToggle }) {
         <small>ENGINE DESK / SERVICE INTELLIGENCE</small>
       </div>
       <div className="login-form">
-        {themeToggle}
         <form onSubmit={submit}>
           <span className="login-badge">
             <ShieldCheck size={16} /> SECURE WORKSPACE
@@ -908,7 +821,7 @@ function Login({ onLogin, themeToggle }) {
     </div>
   );
 }
-function ProfileSettings({ session, headers, themeToggle, back, done }) {
+function ProfileSettings({ session, headers, back, done }) {
   const [form, setForm] = useState({
     name: session.user.name || "",
     email: session.user.email || "",
@@ -1038,13 +951,6 @@ function ProfileSettings({ session, headers, themeToggle, back, done }) {
             />
           </label>
         </div>
-        <div className="profile-theme">
-          <div>
-            <b>Theme preference</b>
-            <span>Choose the workspace tone for this browser.</span>
-          </div>
-          {themeToggle}
-        </div>
         <div className="form-actions">
           <button type="button" className="secondary" onClick={back}>
             Back
@@ -1076,7 +982,6 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
     <>
       <section className="personal-welcome panel">
         <div>
-          <p className="eyebrow">YOUR PERSONAL TICKET TRACKER</p>
           <h2>
             {active.length
               ? `${active.length} request${active.length === 1 ? " is" : "s are"} moving toward resolution.`
@@ -1115,27 +1020,15 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
           </button>
         ))}
       </div>
-      <section className="personal-note" aria-label="Ticket privacy information">
-        <span className="personal-note-icon">
-          <ShieldCheck size={19} />
-        </span>
-        <div>
-          <b>Your requests. Your space.</b>
-          <p>
-            Only tickets you submit appear here. The destination branch and HQ
-            manage the resolution while progress refreshes automatically.
-          </p>
-        </div>
-        <span className="live-chip">
-          <i /> LIVE
-        </span>
-      </section>
       {active.length > 0 && (
         <>
           <div className="section-heading">
             <div>
               <p className="eyebrow">WHAT’S HAPPENING NOW</p>
-              <h2>Track your active requests</h2>
+              <button className="section-title-button" onClick={() => onFilter("unresolved")}>
+                <h2>Track your active requests</h2>
+                <ArrowUpRight size={15} />
+              </button>
             </div>
             <button
               className="text-button"
@@ -1194,8 +1087,7 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
           </div>
         </>
       )}
-      <div className="section-heading">
-        <h2>Your ticket history</h2>
+      <div className="section-heading ticket-history-actions">
         <button className="text-button" onClick={onCreate}>
           <Plus size={15} /> Raise a ticket
         </button>
@@ -1204,182 +1096,16 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
     </>
   );
 }
-function Trend({ summary }) {
-  const [hover, setHover] = useState(null);
-  const rows = summary.trend;
-  const max = Math.max(
-    3,
-    Math.ceil(
-      Math.max(0, ...rows.map((r) => Math.max(r.resolved, r.unresolved))) / 3,
-    ) * 3,
-  );
-  const x = (i) => 48 + (i * 650) / Math.max(rows.length - 1, 1),
-    y = (n) => 185 - (n / max) * 145;
-  const path = (key) =>
-    rows.map((r, i) => `${i ? "L" : "M"} ${x(i)} ${y(r[key])}`).join(" ");
-  const rate = summary.total
-    ? Math.round((summary.resolved / summary.total) * 100)
-    : 0;
+function ReportingPanel() {
   return (
-    <section className="panel trend">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">THE BIG PICTURE</p>
-          <h2>Service performance</h2>
-        </div>
-        <span className="live-chip">
-          <i /> LIVE DATA
-        </span>
-      </div>
-      <div className="chart-intro">
-        <div>
-          <strong>{summary.total.toLocaleString()}</strong>
-          <span>tickets in selected period</span>
-        </div>
-        <div className="chart-legend">
-          <span>
-            <i className="lavender-bg" />
-            Resolved
-          </span>
-          <span>
-            <i className="blue-bg" />
-            Unresolved
-          </span>
-        </div>
-      </div>
-      <div className="chart">
-        <svg
-          viewBox="0 0 740 224"
-          role="img"
-          aria-label={`Current outcome by ticket creation date: ${summary.resolved} resolved, ${summary.unresolved} unresolved`}
-        >
-          <defs>
-            <linearGradient id="fillLavender" x1="0" y1="0" x2="0" y2="1">
-              <stop stopColor="var(--chart-purple)" stopOpacity=".22" />
-              <stop
-                offset="1"
-                stopColor="var(--chart-purple)"
-                stopOpacity="0"
-              />
-            </linearGradient>
-            <linearGradient id="fillBlue" x1="0" y1="0" x2="0" y2="1">
-              <stop stopColor="var(--chart-blue)" stopOpacity=".13" />
-              <stop offset="1" stopColor="var(--chart-blue)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          {[0, 1, 2, 3].map((i) => (
-            <g key={i}>
-              <line
-                x1="48"
-                x2="710"
-                y1={40 + (i * 145) / 3}
-                y2={40 + (i * 145) / 3}
-                stroke="var(--chart-grid)"
-                strokeDasharray="4 5"
-              />
-              <text x="27" y={44 + (i * 145) / 3} textAnchor="end">
-                {Math.ceil((max * (3 - i)) / 3)}
-              </text>
-            </g>
-          ))}
-          {rows.length > 0 &&
-            ["unresolved", "resolved"].map((key) => (
-              <g key={key}>
-                <path
-                  d={`${path(key)} L ${x(rows.length - 1)} 185 L 48 185 Z`}
-                  fill={
-                    key === "resolved" ? "url(#fillLavender)" : "url(#fillBlue)"
-                  }
-                />
-                <path
-                  d={path(key)}
-                  fill="none"
-                  stroke={
-                    key === "resolved"
-                      ? "var(--chart-purple)"
-                      : "var(--chart-blue)"
-                  }
-                  strokeWidth="2.5"
-                  strokeLinejoin="round"
-                />
-                {rows.map((r, i) => (
-                  <circle
-                    key={r.date}
-                    cx={x(i)}
-                    cy={y(r[key])}
-                    r={rows.length === 1 ? 5 : 3}
-                    fill={
-                      key === "resolved"
-                        ? "var(--chart-purple)"
-                        : "var(--chart-blue)"
-                    }
-                  />
-                ))}
-              </g>
-            ))}
-          {rows
-            .filter(
-              (_, i) =>
-                i % Math.max(1, Math.ceil(rows.length / 6)) === 0 ||
-                i === rows.length - 1,
-            )
-            .map((r) => (
-              <text
-                key={r.date}
-                x={x(rows.indexOf(r))}
-                y="213"
-                textAnchor="middle"
-              >
-                {r.date.slice(5)}
-              </text>
-            ))}
-          {hover && (
-            <line
-              x1={x(rows.indexOf(hover))}
-              x2={x(rows.indexOf(hover))}
-              y1="25"
-              y2="185"
-              stroke="var(--chart-purple)"
-              strokeDasharray="3 4"
-              opacity=".6"
-            />
-          )}
-          {rows.map((r, i) => (
-            <rect
-              key={r.date}
-              x={x(i) - 325 / Math.max(rows.length - 1, 1)}
-              y="20"
-              width={650 / Math.max(rows.length - 1, 1)}
-              height="170"
-              fill="transparent"
-              tabIndex="0"
-              aria-label={`${r.date}: ${r.resolved} resolved, ${r.unresolved} unresolved`}
-              onFocus={() => setHover(r)}
-              onBlur={() => setHover(null)}
-              onMouseEnter={() => setHover(r)}
-              onMouseLeave={() => setHover(null)}
-            />
-          ))}
-        </svg>
-        {!rows.length && (
-          <div className="chart-empty">
-            No tickets in this period.
-            <small>Try another date range or branch.</small>
-          </div>
-        )}
-        {hover && (
-          <div className="chart-tooltip">
-            {hover.date} · {hover.resolved} resolved · {hover.unresolved}{" "}
-            unresolved
-          </div>
-        )}
-      </div>
-      <div className="chart-bottom">
-        <span>
-          <span className="lavender">{rate}%</span> resolved in this selection
-        </span>
-        <span>Current status by creation date</span>
-      </div>
+    <section className="panel reporting-placeholder">
+      <BarChart3 size={32} />
+      <p className="eyebrow">AI-ASSISTED REPORTING</p>
+      <h2>Generated operational reports are coming soon.</h2>
+      <p className="muted">
+        This area is reserved for role-aware summaries, trends, and downloadable reports generated from the selected reporting period.
+      </p>
+      <span className="live-chip"><i /> PLANNED</span>
     </section>
   );
 }
@@ -1387,9 +1113,6 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq, staff }) {
   const branches = (metadata?.branches || []).filter(
     (b) => !filters.zone || b.zone === filters.zone,
   );
-  const rate = summary?.total
-    ? Math.round((summary.within / summary.total) * 100)
-    : 0;
   return (
     <aside className="scope">
       <section className="panel">
@@ -1463,6 +1186,23 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq, staff }) {
           Reset scope
         </button>
       </section>
+      <SlaHealth summary={summary} />
+      <div className="scope-foot">
+        <ShieldCheck size={15} />
+        {hq
+          ? "Visibility across all branches"
+          : staff
+            ? "Only tickets you submitted"
+            : "Visibility limited to your branch"}
+      </div>
+    </aside>
+  );
+}
+function SlaHealth({ summary }) {
+  const rate = summary?.total
+    ? Math.round((summary.within / summary.total) * 100)
+    : 0;
+  return (
       <section className="panel sla-panel">
         <div className="panel-heading">
           <h2>SLA health</h2>
@@ -1496,15 +1236,6 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq, staff }) {
           tickets against their resolution time.
         </small>
       </section>
-      <div className="scope-foot">
-        <ShieldCheck size={15} />
-        {hq
-          ? "Visibility across all branches"
-          : staff
-            ? "Only tickets you submitted"
-            : "Visibility limited to your branch"}
-      </div>
-    </aside>
   );
 }
 function CategoryGrid({ summary, onSelect }) {

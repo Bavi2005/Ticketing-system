@@ -1,59 +1,29 @@
-/* Both modes use the same purple/blue palette with distinct readable surfaces. */
+/* Permanent light workspace palette. */
 :root {
-  --canvas: #ffffff;
-  --main-bg: #ffffff;
-  --sidebar: #d9ccfb;
-  --topbar: #d7e8ff;
+  --canvas: #f4f7fb;
+  --sidebar: #f4f7fb;
   --surface: #ffffff;
-  --surface-soft: #f7f3ff;
-  --purple-soft: #eee6ff;
-  --blue-soft: #e9f3ff;
-  --purple-fill: #cebaf6;
-  --blue-fill: #bfdcff;
-  --purple: #8d6bc3;
-  --blue: #668fc9;
-  --text: #2d2439;
-  --text-muted: #6f647d;
-  --text-purple: #674292;
-  --text-blue: #3f6598;
+  --surface-soft: #eef3fa;
+  --purple-soft: #eee9fa;
+  --blue-soft: #e8f0fb;
+  --purple-fill: #d9cdf1;
+  --blue-fill: #cadcf4;
+  --purple: #8665b3;
+  --blue: #6288c4;
+  --text: #263247;
+  --text-muted: #64728a;
+  --text-purple: #674593;
+  --text-blue: #3f649d;
   --text-danger: #9d3b66;
   --danger-surface: #eccddd;
-  --border: #e3d9f1;
-  --border-strong: #b99bd7;
-  --ambient: #c6b1ed33;
-  --shadow-color: #4f33751a;
+  --border: #d8e0ec;
+  --border-strong: #a99ac7;
+  --ambient: #d9e4f233;
+  --shadow-color: #40537016;
   --chart-purple: #8c5cb6;
   --chart-blue: #648bc7;
-  --chart-grid: #c9b5db;
+  --chart-grid: #d8e0ec;
   color-scheme: light;
-}
-:root[data-theme="dark"] {
-  --canvas: #21162f;
-  --main-bg: #21162f;
-  --sidebar: #301d48;
-  --topbar: #392252;
-  --surface: #2c1d3d;
-  --surface-soft: #36244a;
-  --purple-soft: #422b59;
-  --blue-soft: #302d54;
-  --purple-fill: #55406f;
-  --blue-fill: #374f73;
-  --purple: #b89ade;
-  --blue: #99b9eb;
-  --text: #eee5fc;
-  --text-muted: #b7a8cd;
-  --text-purple: #d0b0f3;
-  --text-blue: #aec9f4;
-  --text-danger: #eea5c2;
-  --danger-surface: #543049;
-  --border: #4c3a64;
-  --border-strong: #9472b8;
-  --ambient: #9066c128;
-  --shadow-color: #0d081944;
-  --chart-purple: #c3a0ee;
-  --chart-blue: #98b9ed;
-  --chart-grid: #4e3c67;
-  color-scheme: dark;
 }
 :root {
   font-family: Inter, "Segoe UI", Arial, sans-serif;
@@ -177,9 +147,7 @@ small {
   grid-template-columns: 88px minmax(0, 1fr);
 }
 .sidebar {
-  background:
-    radial-gradient(circle at 20% 5%, rgba(255,255,255,.34), transparent 28%),
-    linear-gradient(165deg, var(--sidebar), var(--blue-soft));
+  background: var(--sidebar);
   border-right: 1px solid var(--border);
   padding: 26px 20px 20px;
   position: sticky;
@@ -313,6 +281,26 @@ small {
   border-radius: 10px;
   color: var(--text);
 }
+.sidebar-profile {
+  margin-top: auto;
+}
+.sidebar-profile > .profile-trigger {
+  width: 100%;
+}
+.sidebar-profile .profile-dropdown {
+  top: auto;
+  right: auto;
+  bottom: calc(100% + 12px);
+  left: 0;
+}
+.sidebar-collapsed .sidebar-profile .profile-trigger > span:nth-child(2),
+.sidebar-collapsed .sidebar-profile .profile-trigger > svg {
+  display: none;
+}
+.sidebar-collapsed .sidebar-profile .profile-trigger {
+  justify-content: center;
+  padding: 5px;
+}
 .sidebar-note > b {
   display: block;
   font-size: 12px;
@@ -384,7 +372,7 @@ small {
 }
 .main {
   min-width: 0;
-  background: var(--main-bg);
+  background: var(--canvas);
 }
 .topbar {
   height: 76px;
@@ -739,6 +727,33 @@ h1 > span {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 28px;
+}
+.section-title-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+.ticket-history-actions {
+  justify-content: flex-end;
+}
+.reporting-placeholder {
+  max-width: 760px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 14px;
+}
+.reporting-placeholder > svg {
+  color: var(--accent);
+}
+.reporting-placeholder .eyebrow {
+  margin: 0;
+}
+.reporting-placeholder .live-chip {
+  margin-top: 6px;
 }
 .panel-heading {
   display: flex;
