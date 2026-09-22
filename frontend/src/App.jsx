@@ -368,26 +368,6 @@ export default function App() {
         </div>
       </aside>
       <main className="main">
-        {manager && <div className="topbar">
-          <div className="topbar-nav" aria-label="Workspace shortcuts">
-            <button onClick={() => navigate("overview")}>Workspace</button>
-            <ChevronRight size={13} />
-            <button onClick={() => navigate(page)}>
-              {hq
-                ? "National operations"
-                : manager
-                  ? session.user.branch?.name || "Branch operations"
-                  : "My tickets"}
-            </button>
-          </div>
-          <div className="topbar-actions">
-            <button className="secure" onClick={load}>
-              <ShieldCheck size={14} />
-              <span className="refresh-full">Refresh workspace</span>
-              <span className="refresh-short">Refresh</span>
-            </button>
-          </div>
-        </div>}
         <div className="content">
           <header className="page-heading">
             <div>
