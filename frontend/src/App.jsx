@@ -11,7 +11,11 @@ import {
   ChevronRight,
   CircleCheck,
   Clock3,
+  Fan,
+  Flame,
+  Gauge,
   LayoutDashboard,
+  Layers3,
   ListFilter,
   LogOut,
   MapPin,
@@ -19,6 +23,7 @@ import {
   Search,
   ShieldCheck,
   Ticket,
+  Video,
   X,
   RefreshCw,
   Menu,
@@ -37,6 +42,7 @@ const categories = [
   "Gas System",
   "Elevator",
 ];
+const icons = [Fan, Video, BellRing, Gauge, Flame, Layers3];
 const priorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const statuses = [
   "NEW",
