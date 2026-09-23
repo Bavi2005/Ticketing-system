@@ -3253,3 +3253,100 @@ textarea {
     font-size: 10px;
   }
 }
+
+/* Final mobile navigation override (kept last so legacy responsive rules cannot hide it). */
+@media (max-width: 700px) {
+  .shell,
+  .shell.sidebar-collapsed {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  .sidebar,
+  .sidebar-collapsed .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    height: auto;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 6px 20px var(--shadow-color);
+  }
+  .sidebar-head,
+  .sidebar-collapsed .sidebar-head {
+    display: flex;
+    flex: 1;
+    justify-content: flex-start;
+  }
+  .sidebar-toggle {
+    display: none;
+  }
+  .sidebar .brand,
+  .sidebar-collapsed .sidebar .brand {
+    font-size: 19px;
+  }
+  .sidebar .brand-icon,
+  .sidebar-collapsed .brand-icon {
+    width: 34px;
+    height: 34px;
+  }
+  .sidebar-profile,
+  .sidebar-collapsed .sidebar-profile {
+    margin: 0;
+  }
+  .sidebar-profile > .profile-trigger,
+  .sidebar-collapsed .sidebar-profile .profile-trigger {
+    width: auto;
+    padding: 4px;
+  }
+  .sidebar-profile .profile-dropdown {
+    position: fixed;
+    top: 62px;
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    width: auto;
+  }
+  .sidebar nav,
+  .sidebar-collapsed .sidebar nav {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 50;
+    display: flex;
+    grid-column: auto;
+    grid-row: auto;
+    gap: 4px;
+    margin: 0;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    overflow: visible;
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--sidebar) 94%, white);
+    box-shadow: 0 -8px 24px var(--shadow-color);
+  }
+  .sidebar nav button,
+  .sidebar-collapsed .sidebar nav button {
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 4px;
+    border-radius: 10px;
+    font-size: 10px;
+  }
+  .sidebar-collapsed .sidebar nav button span:not(.nav-dot) {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+  .sidebar nav button svg {
+    width: 18px;
+    height: 18px;
+  }
+}
