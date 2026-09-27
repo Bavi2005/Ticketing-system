@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   Activity,
+  ArrowLeft,
   ArrowUpRight,
   BellRing,
   Building2,
-  CalendarDays,
   BarChart3,
   CheckCheck,
   ChevronRight,
@@ -109,8 +109,8 @@ function rangeFor(preset) {
   };
 }
 const initialFilters = () => ({
-  preset: "month",
-  ...rangeFor("month"),
+  preset: "today",
+  ...rangeFor("today"),
   zone: "",
   branchId: "",
 });
@@ -146,13 +146,9 @@ export default function App() {
   }, []);
   const [session, setSession] = useState(storedSession);
   const [page, setPage] = useState(location.hash.slice(1) || "overview");
-  const [filters, setFilters] = useState(() =>
-    session?.user.role === "STAFF"
-      ? { ...initialFilters(), preset: "all", ...rangeFor("all") }
-      : initialFilters(),
-  );
+  const [filters, setFilters] = useState(initialFilters);
   const [metric, setMetric] = useState("total"),
-    [category, setCategory] = useState("");
+    [category, setCategory] = useState(null);
   const [data, setData] = useState(null),
     [metadata, setMetadata] = useState(null),
     [selected, setSelected] = useState(null);
@@ -160,8 +156,10 @@ export default function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false),
-    [profileOpen, setProfileOpen] = useState(false);
+    [profileOpen, setProfileOpen] = useState(false),
+    [periodOpen, setPeriodOpen] = useState(false);
   const profileMenu = useRef(null);
+  const periodMenu = useRef(null);
   const requestId = useRef(0);
   const loadedScope = useRef("");
   const headers = { Authorization: `Bearer ${session?.token}` };
@@ -174,7 +172,7 @@ export default function App() {
     setSelected(null);
     setFilters(initialFilters());
     setMetric("total");
-    setCategory("");
+    setCategory(null);
     setNotice("");
     window.location.assign("#overview");
   }, []);
@@ -182,6 +180,7 @@ export default function App() {
     window.location.assign(`#${p}`);
     setPage(p);
     setNotice("");
+    setPeriodOpen(false);
   };
   useEffect(() => {
     const change = () => setPage(location.hash.slice(1) || "overview");
@@ -192,6 +191,13 @@ export default function App() {
     const close = (event) => {
       if (profileMenu.current?.contains(event.target)) return;
       setProfileOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+  useEffect(() => {
+    const close = (event) => {
+      if (!periodMenu.current?.contains(event.target)) setPeriodOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
@@ -265,11 +271,7 @@ export default function App() {
       <Login
         onLogin={(s) => {
           localStorage.setItem("ticketSession", JSON.stringify(s));
-          setFilters(
-            s.user.role === "STAFF"
-              ? { ...initialFilters(), preset: "all", ...rangeFor("all") }
-              : initialFilters(),
-          );
+          setFilters(initialFilters());
           setSession(s);
         }}
       />
@@ -278,7 +280,7 @@ export default function App() {
     manager = session.user.role !== "STAFF";
   const drill = (key) => {
     setMetric(key);
-    setCategory("");
+    setCategory(null);
     navigate("tickets");
   };
   const title =
@@ -328,7 +330,7 @@ export default function App() {
                 className={page === key ? "nav-active" : ""}
                 aria-current={page === key ? "page" : undefined}
                 onClick={() => {
-                  setCategory("");
+                  setCategory(null);
                   setMetric("total");
                   navigate(key);
                 }}
@@ -421,64 +423,78 @@ export default function App() {
             </div>
           )}
           {page !== "new" && (manager || page !== "overview") && (
-            <div className="filterbar">
-              <div className="filter-title">
-                <CalendarDays size={17} />
-                <span>Reporting period</span>
+            <div className="period-toolbar">
+              <div className="period-filter" ref={periodMenu}>
+                <button
+                  className="period-filter-button"
+                  aria-label="Filter reporting period"
+                  aria-haspopup="true"
+                  aria-expanded={periodOpen}
+                  title="Reporting period"
+                  onClick={() => setPeriodOpen((open) => !open)}
+                >
+                  <ListFilter size={20} />
+                </button>
+                {periodOpen && (
+                  <div className="period-menu">
+                    <strong>Reporting period</strong>
+                    {[
+                      ["today", "Today"],
+                      ["yesterday", "Yesterday"],
+                      ["week", "Last week"],
+                      ["month", "This month"],
+                      ["last", "Last month"],
+                      ["year", "This year"],
+                      ["all", "All time"],
+                      ["custom", "Custom range"],
+                    ].map(([value, name]) => (
+                      <button
+                        key={value}
+                        className={filters.preset === value ? "active" : ""}
+                        onClick={() => {
+                          setFilters({
+                            ...filters,
+                            preset: value,
+                            ...(value === "custom" ? {} : rangeFor(value)),
+                          });
+                          if (value !== "custom") setPeriodOpen(false);
+                        }}
+                      >
+                        {name}
+                        {filters.preset === value && <CheckCheck size={15} />}
+                      </button>
+                    ))}
+                    {filters.preset === "custom" && (
+                      <div className="period-dates">
+                        <label>
+                          From
+                          <input
+                            aria-label="Start date"
+                            type="date"
+                            value={filters.from}
+                            max={filters.to || undefined}
+                            onChange={(e) =>
+                              setFilters({ ...filters, from: e.target.value })
+                            }
+                          />
+                        </label>
+                        <label>
+                          To
+                          <input
+                            aria-label="End date"
+                            type="date"
+                            value={filters.to}
+                            min={filters.from || undefined}
+                            onChange={(e) =>
+                              setFilters({ ...filters, to: e.target.value })
+                            }
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <select
-                aria-label="Reporting period"
-                value={filters.preset}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    preset: e.target.value,
-                    ...(e.target.value === "custom"
-                      ? {}
-                      : rangeFor(e.target.value)),
-                  })
-                }
-              >
-                <option value="month">This month</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="week">Last week</option>
-                <option value="last">Last month</option>
-                <option value="year">This year</option>
-                <option value="all">All time</option>
-                <option value="custom">Custom range</option>
-              </select>
-              {filters.preset === "custom" && (
-                <div className="date-range">
-                  <input
-                    aria-label="Start date"
-                    type="date"
-                    value={filters.from}
-                    max={filters.to || undefined}
-                    onChange={(e) =>
-                      setFilters({ ...filters, from: e.target.value })
-                    }
-                  />
-                  <span>to</span>
-                  <input
-                    aria-label="End date"
-                    type="date"
-                    value={filters.to}
-                    min={filters.from || undefined}
-                    onChange={(e) =>
-                      setFilters({ ...filters, to: e.target.value })
-                    }
-                  />
-                </div>
-              )}
-              <span className="timezone">Malaysia time · UTC+8</span>
-              <button
-                className="icon-button"
-                aria-label="Refresh dashboard"
-                onClick={load}
-              >
-                <RefreshCw size={16} className={loading ? "spin" : ""} />
-              </button>
             </div>
           )}
           {page === "new" ? (
@@ -489,7 +505,7 @@ export default function App() {
               done={(m) => {
                 setFilters(initialFilters());
                 setMetric("total");
-                setCategory("");
+                setCategory(null);
                 navigate("tickets");
                 setNotice(m);
                 load();
@@ -513,7 +529,7 @@ export default function App() {
           ) : page === "reporting" && manager ? (
             <ReportingPanel />
           ) : (
-            <div className={`dashboard-layout ${manager ? "" : "user-dashboard-layout"}`}>
+            <div className="dashboard-layout full-dashboard-layout">
               <div className="dashboard-main">
                 {loading && !data ? (
                   <div className="loading panel" role="status">
@@ -529,12 +545,11 @@ export default function App() {
                           open={setSelected}
                           onFilter={(key) => {
                             setMetric(key);
-                            setCategory("");
+                            setCategory(null);
                             navigate("tickets");
                           }}
                         />
-                      ) : page === "overview" ||
-                        !["services", "tickets"].includes(page) ? (
+                      ) : manager && page === "overview" ? (
                         <>
                           <div className="metric-cards">
                             {metrics.map(([key, name, Icon, tone]) => (
@@ -549,74 +564,88 @@ export default function App() {
                                   </span>
                                   <ArrowUpRight size={15} />
                                 </div>
-                                <strong>
-                                  {data.summary[key].toLocaleString()}
-                                </strong>
+                                <strong>{data.summary[key].toLocaleString()}</strong>
                                 <span>{name}</span>
                                 <small>View tickets <ChevronRight size={12} /></small>
                               </button>
                             ))}
                           </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="breadcrumb">
-                            <button onClick={() => navigate("overview")}>
-                              Overview
-                            </button>
-                            <ChevronRight size={14} />
-                            {metrics.find((m) => m[0] === metric)?.[1]}
-                            {category && (
-                              <>
-                                <ChevronRight size={14} />
-                                {category}
-                              </>
-                            )}
-                          </div>
-                          {manager && (
-                            <div className="category-tabs">
-                              <button
-                                className={!category ? "active" : ""}
-                                onClick={() => setCategory("")}
-                              >
-                                All systems
-                              </button>
-                              {categories.map((c) => (
-                                <button
-                                  key={c}
-                                  className={category === c ? "active" : ""}
-                                  onClick={() => setCategory(c)}
-                                >
-                                  {c}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          <TicketList
-                            tickets={data.tickets.filter(
-                              (t) => !category || t.category === category,
-                            )}
-                            open={setSelected}
+                          <ScopePanel
+                            metadata={metadata}
+                            filters={filters}
+                            setFilters={setFilters}
+                            hq={hq}
                           />
                         </>
-                      )}
+                      ) : manager && page === "tickets" ? (
+                        category === null ? (
+                          <section className="system-selection">
+                            <div className="breadcrumb">
+                              <button onClick={() => navigate("overview")}>Overview</button>
+                              <ChevronRight size={14} />
+                              {metrics.find((m) => m[0] === metric)?.[1]}
+                            </div>
+                            <div className="section-heading">
+                              <div>
+                                <p className="eyebrow">TICKET REGISTER</p>
+                                <h2>Choose a system</h2>
+                              </div>
+                            </div>
+                            <div className="system-grid">
+                              {["", ...categories].map((system, index) => {
+                                const Icon = index === 0 ? Layers3 : icons[index - 1];
+                                const count = system
+                                  ? data.tickets.filter((ticket) => ticket.category === system).length
+                                  : data.tickets.length;
+                                return (
+                                  <button
+                                    key={system || "all"}
+                                    className="system-choice panel"
+                                    onClick={() => setCategory(system)}
+                                  >
+                                    <span className="system-icon"><Icon size={24} /></span>
+                                    <ArrowUpRight className="system-choice-arrow" size={18} />
+                                    <strong>{system || "All systems"}</strong>
+                                    <small>{count} {count === 1 ? "ticket" : "tickets"}</small>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        ) : (
+                          <section className="system-results">
+                            <button
+                              className="back-to-systems"
+                              onClick={() => setCategory(null)}
+                            >
+                              <ArrowLeft size={18} /> Back to systems
+                            </button>
+                            <div className="section-heading">
+                              <div>
+                                <p className="eyebrow">{metrics.find((m) => m[0] === metric)?.[1]}</p>
+                                <h2>{category || "All systems"}</h2>
+                              </div>
+                            </div>
+                            <TicketList
+                              tickets={data.tickets.filter(
+                                (ticket) => !category || ticket.category === category,
+                              )}
+                              open={setSelected}
+                              compact
+                            />
+                          </section>
+                        )
+                      ) : page === "tickets" ? (
+                        <TicketList tickets={data.tickets} open={setSelected} />
+                      ) : null}
                     </div>
                   )
                 )}
               </div>
-              {!manager ? (
+              {!manager && page === "overview" && (
                 <aside className="scope user-health-panel">
                   <SlaHealth summary={data?.summary} />
                 </aside>
-              ) : (
-                <ScopePanel
-                  metadata={metadata}
-                  filters={filters}
-                  setFilters={setFilters}
-                  summary={data?.summary}
-                  hq={hq}
-                  staff={!manager}
-                />
               )}
             </div>
           )}
@@ -1005,75 +1034,16 @@ function ReportingPanel() {
     </section>
   );
 }
-function ScopePanel({ metadata, filters, setFilters, summary, hq, staff }) {
+function ScopePanel({ metadata, filters, setFilters, hq }) {
   const branches = (metadata?.branches || []).filter(
-    (b) => !filters.zone || b.zone === filters.zone,
+    (branch) => !filters.zone || branch.zone === filters.zone,
   );
   return (
-    <aside className="scope">
-      <section className="panel">
-        <div className="panel-heading">
+    <section className="panel dashboard-scope" aria-label="Operational scope">
+      <div className="dashboard-scope-head">
+        <div>
           <h2>Operational scope</h2>
-          <ListFilter size={17} />
-        </div>
-        <p className="muted">
-          Focus your view without losing the bigger picture.
-        </p>
-        <div className="scope-snapshot" aria-label="Current scope summary">
-          <div>
-            <span>Tickets</span>
-            <strong>{summary?.total?.toLocaleString() ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Within SLA</span>
-            <strong>{summary?.within?.toLocaleString() ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Missed</span>
-            <strong>{summary?.missed?.toLocaleString() ?? "—"}</strong>
-          </div>
-        </div>
-        <label className="scope-label">
-          <MapPin size={14} /> ZONES
-        </label>
-        <div className="zone-list">
-          {["", "West MY", "East MY"].map((z) => (
-            <button
-              key={z}
-              className={filters.zone === z ? "active" : ""}
-              onClick={() => setFilters({ ...filters, zone: z, branchId: "" })}
-            >
-              <span className="radio" />
-              {z || "All zones"}
-              {filters.zone === z && <CheckCheck size={15} />}
-            </button>
-          ))}
-        </div>
-        <div className="scope-divider" />
-        <label className="scope-label">
-          <Building2 size={14} /> BRANCHES / STATES
-        </label>
-        <div className="branch-list">
-          <button
-            className={!filters.branchId ? "active" : ""}
-            onClick={() => setFilters({ ...filters, branchId: "" })}
-          >
-            {hq || staff ? "All branches" : "My branch"}
-            <span>{branches.length}</span>
-          </button>
-          {branches.map((b) => (
-            <button
-              key={b.id}
-              className={filters.branchId === b.id ? "active" : ""}
-              onClick={() => setFilters({ ...filters, branchId: b.id })}
-            >
-              <span>
-                <b>{b.name}</b>
-                <small>{b.zone}</small>
-              </span>
-              <ChevronRight size={14} />
-            </button>
-          ))}
+          <p className="muted">Choose the zones and branches shown in the dashboard.</p>
         </div>
         <button
           className="reset-scope"
@@ -1081,17 +1051,54 @@ function ScopePanel({ metadata, filters, setFilters, summary, hq, staff }) {
         >
           Reset scope
         </button>
-      </section>
-      <SlaHealth summary={summary} />
-      <div className="scope-foot">
-        <ShieldCheck size={15} />
-        {hq
-          ? "Visibility across all branches"
-          : staff
-            ? "Only tickets you submitted"
-            : "Visibility limited to your branch"}
       </div>
-    </aside>
+      <div className="dashboard-scope-grid">
+        <div className="dashboard-scope-column">
+          <div className="scope-label"><MapPin size={15} /> ZONES</div>
+          <div className="zone-list">
+            {["", "West MY", "East MY"].map((zone) => (
+              <button
+                key={zone}
+                className={filters.zone === zone ? "active" : ""}
+                aria-pressed={filters.zone === zone}
+                onClick={() => setFilters({ ...filters, zone, branchId: "" })}
+              >
+                <span className="radio" />
+                {zone || "All zones"}
+                {filters.zone === zone && <CheckCheck size={15} />}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="dashboard-scope-column">
+          <div className="scope-label"><Building2 size={15} /> BRANCHES / STATES</div>
+          <div className="branch-list">
+            <button
+              className={!filters.branchId ? "active" : ""}
+              aria-pressed={!filters.branchId}
+              onClick={() => setFilters({ ...filters, branchId: "" })}
+            >
+              {hq ? "All branches" : "My branch"}
+              <span>{branches.length}</span>
+            </button>
+            {branches.map((branch) => (
+              <button
+                key={branch.id}
+                className={filters.branchId === branch.id ? "active" : ""}
+                aria-pressed={filters.branchId === branch.id}
+                onClick={() => setFilters({ ...filters, branchId: branch.id })}
+              >
+                <span>
+                  <b>{branch.name}</b>
+                  <small>{branch.zone}</small>
+                </span>
+                <ChevronRight size={14} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 function SlaHealth({ summary }) {
