@@ -3439,6 +3439,10 @@ textarea {
 .dashboard-scope .branch-list {
   max-height: 250px;
 }
+.dashboard-sla {
+  max-width: 460px;
+  margin-top: 20px;
+}
 .system-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
