@@ -850,9 +850,6 @@ h1 > span {
   gap: 8px;
   color: var(--text);
 }
-.ticket-history-actions {
-  justify-content: flex-end;
-}
 .reporting-placeholder {
   max-width: 760px;
   min-height: 320px;
@@ -2749,31 +2746,11 @@ textarea {
   }
 }
 
-.personal-welcome {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  background: linear-gradient(115deg, var(--purple-soft), var(--blue-soft));
-}
-.personal-welcome h2 {
-  font-size: 22px;
-  line-height: 1.45;
-}
-.personal-welcome p:not(.eyebrow) {
-  margin-top: 10px;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--text-muted);
-}
-.personal-welcome .live-chip {
-  flex-shrink: 0;
-}
 .personal-metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 15px;
-  margin: 20px 0 30px;
+  margin: 0 0 30px;
 }
 .personal-metrics .metric-card {
   padding: 20px;
@@ -2986,13 +2963,6 @@ textarea {
   font-size: 7px;
 }
 @media (max-width: 700px) {
-  .personal-welcome {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .personal-welcome h2 {
-    font-size: 20px;
-  }
   .personal-metrics {
     gap: 9px;
   }
