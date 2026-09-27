@@ -576,6 +576,9 @@ export default function App() {
                             setFilters={setFilters}
                             hq={hq}
                           />
+                          <div className="dashboard-sla">
+                            <SlaHealth summary={data.summary} />
+                          </div>
                         </>
                       ) : manager && page === "tickets" ? (
                         category === null ? (
