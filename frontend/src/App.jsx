@@ -529,7 +529,7 @@ export default function App() {
           ) : page === "reporting" && manager ? (
             <ReportingPanel />
           ) : (
-            <div className="dashboard-layout full-dashboard-layout">
+            <div className={`dashboard-layout ${manager && page === "overview" ? "manager-overview-layout" : "full-dashboard-layout"}`}>
               <div className="dashboard-main">
                 {loading && !data ? (
                   <div className="loading panel" role="status">
@@ -576,9 +576,6 @@ export default function App() {
                             setFilters={setFilters}
                             hq={hq}
                           />
-                          <div className="dashboard-sla">
-                            <SlaHealth summary={data.summary} />
-                          </div>
                         </>
                       ) : manager && page === "tickets" ? (
                         category === null ? (
@@ -645,8 +642,8 @@ export default function App() {
                   )
                 )}
               </div>
-              {!manager && page === "overview" && (
-                <aside className="scope user-health-panel">
+              {page === "overview" && (
+                <aside className={`scope ${manager ? "dashboard-health-panel" : "user-health-panel"}`}>
                   <SlaHealth summary={data?.summary} />
                 </aside>
               )}
