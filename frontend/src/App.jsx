@@ -532,7 +532,6 @@ export default function App() {
                             setCategory("");
                             navigate("tickets");
                           }}
-                          onCreate={() => navigate("new")}
                         />
                       ) : page === "overview" ||
                         !["services", "tickets"].includes(page) ? (
@@ -882,7 +881,7 @@ function ProfileSettings({ session, headers, back, done }) {
     </div>
   );
 }
-function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
+function MyDashboard({ tickets, summary, open, onFilter }) {
   const active = tickets.filter(
     (t) => !["RESOLVED", "CLOSED"].includes(t.status),
   );
@@ -898,21 +897,6 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
     })[status] ?? 0;
   return (
     <>
-      <section className="personal-welcome panel">
-        <div>
-          <h2>
-            {active.length
-              ? `${active.length} request${active.length === 1 ? " is" : "s are"} moving toward resolution.`
-              : "You’re all caught up."}
-          </h2>
-          <p>
-            Open a ticket to check its progress or message your service team.
-          </p>
-        </div>
-        <span className="live-chip">
-          <i /> UPDATES EVERY 15s
-        </span>
-      </section>
       <div className="personal-metrics">
         {[
           ["total", "My tickets", Ticket],
@@ -1005,12 +989,6 @@ function MyDashboard({ tickets, summary, open, onFilter, onCreate }) {
           </div>
         </>
       )}
-      <div className="section-heading ticket-history-actions">
-        <button className="text-button" onClick={onCreate}>
-          <Plus size={15} /> Raise a ticket
-        </button>
-      </div>
-      <TicketList tickets={tickets} open={open} />
     </>
   );
 }
