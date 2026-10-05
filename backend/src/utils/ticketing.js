@@ -7,31 +7,53 @@ const categories = [
   "Elevator",
 ];
 const zones = ["West MY", "East MY"];
-const statuses = [
-  "NEW",
-  "ACKNOWLEDGED",
-  "IN_PROGRESS",
-  "WAITING",
-  "RESOLVED",
-  "CLOSED",
-];
+const statuses = ["IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"];
 const sla = { CRITICAL: [1, 4], HIGH: [4, 12], MEDIUM: [8, 24], LOW: [24, 72] };
 const zoneOf = (branch) =>
-  /sabah|sarawak|labuan/i.test(`${branch.name} ${branch.location || ""}`)
-    ? "East MY"
-    : "West MY";
+  branch
+    ? branch.zone ||
+      (/sabah|sarawak|labuan/i.test(`${branch.name} ${branch.location || ""}`)
+        ? "East MY"
+        : "West MY")
+    : "__NO_ZONE__";
 const completed = (t) => ["RESOLVED", "CLOSED"].includes(t.status);
 const missed = (t, now = new Date()) =>
-  new Date(completed(t) ? t.resolvedAt || t.closedAt || t.updatedAt : now) >
-  new Date(t.resolutionDueAt);
+  new Date(
+    completed(t)
+      ? t.resolvedAt || t.closedAt || t.updatedAt
+      : t.waitingSince || now,
+  ) > new Date(t.resolutionDueAt);
 const scope = (user) =>
   user.role === "HQ_ADMIN"
     ? {}
     : user.role === "STAFF"
-      ? { requesterId: user.id || "__NO_USER__" }
+      ? {
+          OR: [
+            { requesterId: user.id || "__NO_USER__" },
+            { assigneeId: user.id || "__NO_USER__" },
+          ],
+        }
       : user.role === "BRANCH_MANAGER"
-        ? { branchId: user.branchId || "__NO_BRANCH__" }
-        : { id: "__NO_ACCESS__" };
+        ? {
+            ...(user.zone || user.branch
+              ? { branch: { zone: user.zone || zoneOf(user.branch) } }
+              : { branchId: user.branchId || "__NO_BRANCH__" }),
+            ...(user.operatorId
+              ? { requester: { operatorId: user.operatorId } }
+              : {}),
+          }
+        : user.role === "OPERATOR"
+          ? {
+              OR: [
+                {
+                  requester: {
+                    operatorId: user.ownedOperator?.id || "__NO_OPERATOR__",
+                  },
+                },
+                { requesterId: user.id || "__NO_USER__" },
+              ],
+            }
+          : { id: "__NO_ACCESS__" };
 const fail = (message) => {
   throw Object.assign(new Error(message), { status: 400 });
 };

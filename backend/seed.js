@@ -30,8 +30,17 @@ async function main() {
     states.map((name, i) =>
       prisma.branch.upsert({
         where: { code: `BR${i + 1}` },
-        update: { name, location: name },
-        create: { code: `BR${i + 1}`, name, location: name },
+        update: {
+          name,
+          location: name,
+          zone: /Sabah|Sarawak|Labuan/.test(name) ? "East MY" : "West MY",
+        },
+        create: {
+          code: `BR${i + 1}`,
+          name,
+          location: name,
+          zone: /Sabah|Sarawak|Labuan/.test(name) ? "East MY" : "West MY",
+        },
       }),
     ),
   );
@@ -86,11 +95,7 @@ async function main() {
     }
     await prisma.user.upsert({
       where: { email },
-      update: {
-        name: `Test User ${i}`,
-        branchId: branches[0].id,
-        role: "STAFF",
-      },
+      update: {},
       create: {
         email,
         name: `Test User ${i}`,
@@ -126,8 +131,13 @@ async function main() {
       );
     const samples = [
       ["Air handling unit not cooling", "HVAC", "HIGH", "IN_PROGRESS"],
-      ["Loading bay camera offline", "CCTV", "MEDIUM", "ACKNOWLEDGED"],
-      ["Smoke detector fault on Level 2", "Fire Alarm", "CRITICAL", "NEW"],
+      ["Loading bay camera offline", "CCTV", "MEDIUM", "IN_PROGRESS"],
+      [
+        "Smoke detector fault on Level 2",
+        "Fire Alarm",
+        "CRITICAL",
+        "IN_PROGRESS",
+      ],
       ["Building automation schedule incorrect", "BAS", "LOW", "WAITING"],
       ["Gas pressure sensor inspection", "Gas System", "HIGH", "RESOLVED"],
       ["Passenger lift door fault", "Elevator", "CRITICAL", "RESOLVED"],
@@ -157,6 +167,8 @@ async function main() {
           ].includes(status)
             ? hoursAgo((i + 1) * 20 - 0.5)
             : null,
+          waitingSince:
+            status === "WAITING" ? hoursAgo((i + 1) * 20 - 1) : null,
           resolvedAt:
             status === "RESOLVED"
               ? hoursAgo(
@@ -167,6 +179,11 @@ async function main() {
       });
     }
   }
+  await prisma.ticket.updateMany({
+    where: { status: { in: ["NEW", "ACKNOWLEDGED"] } },
+    data: { status: "IN_PROGRESS" },
+  });
+  await prisma.$executeRaw`UPDATE "Ticket" SET "waitingSince" = "updatedAt" WHERE "status" = 'WAITING' AND "waitingSince" IS NULL`;
   console.log("Seed complete. Staff: password123; managers/HQ: admin123.");
 }
 main()
