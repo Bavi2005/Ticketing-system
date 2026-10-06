@@ -33,7 +33,7 @@ model Branch {
   code String @unique
   name String
   location String?
-  zone String @default("West MY")
+  zone String @default("CENTRAL")
   users User[]
   tickets Ticket[]
   createdAt DateTime @default(now())
@@ -45,6 +45,7 @@ model User {
   passwordHash String
   name String
   role Role @default(STAFF)
+  accessEnabled Boolean @default(true)
   zone String?
   operatorId String?
   operator Operator? @relation("OperatorStaff", fields: [operatorId], references: [id])

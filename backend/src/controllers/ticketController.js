@@ -36,12 +36,7 @@ const handle = (fn) => async (req, res, next) => {
 exports.metadata = handle(async (req, res) => {
   const branchWhere =
     req.user.role === "BRANCH_MANAGER"
-      ? {
-          zone:
-            req.user.zone ||
-            (req.user.branch && zoneOf(req.user.branch)) ||
-            "__NO_ZONE__",
-        }
+      ? { id: req.user.branchId || "__NO_SITE__" }
       : req.user.role === "STAFF"
         ? { id: req.user.branchId || "__NO_BRANCH__" }
         : {};
@@ -59,12 +54,6 @@ exports.metadata = handle(async (req, res) => {
               { role: "HQ_ADMIN" },
               {
                 role: "STAFF",
-                ...(req.user.role !== "OPERATOR" && (req.user.operatorId || req.user.ownedOperator)
-                  ? {
-                      operatorId:
-                        req.user.operatorId || req.user.ownedOperator.id,
-                    }
-                  : {}),
                 ...(req.user.role === "BRANCH_MANAGER"
                   ? { branch: branchWhere }
                   : {}),
@@ -157,12 +146,12 @@ exports.create = handle(async (req, res) => {
     !zones.includes(zone)
   )
     fail(
-      "Provide a title, description, valid service category, priority and zone",
+      "Provide a title, description, valid service category, priority and region",
     );
   if (req.user.role === "STAFF" && branchId && branchId !== req.user.branchId)
     return res
       .status(403)
-      .json({ message: "Your assigned branch cannot be changed" });
+      .json({ message: "Your assigned site cannot be changed" });
   const targetId =
     req.user.role === "STAFF"
       ? req.user.branchId
@@ -170,14 +159,14 @@ exports.create = handle(async (req, res) => {
   const branch =
     targetId && (await prisma.branch.findUnique({ where: { id: targetId } }));
   if (!branch || zoneOf(branch) !== zone)
-    fail("Select a branch within the chosen zone");
+    fail("Select a site within the chosen region");
   if (
     req.user.role === "BRANCH_MANAGER" &&
-    zoneOf(branch) !== (req.user.zone || zoneOf(req.user.branch))
+    branch.id !== req.user.branchId
   )
     return res
       .status(403)
-      .json({ message: "Branch is outside your assigned zone" });
+      .json({ message: "Site is outside your assigned access" });
   const [respond, resolve] = sla[priority];
   const now = Date.now();
   const ticket = await prisma.ticket.create({
@@ -271,14 +260,14 @@ exports.update = handle(async (req, res) => {
   }
   if (branchId !== undefined) {
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
-    if (!branch) fail("Unknown branch");
+    if (!branch) fail("Unknown site");
     if (
       user.role === "BRANCH_MANAGER" &&
-      zoneOf(branch) !== (user.zone || zoneOf(user.branch))
+      branch.id !== user.branchId
     )
       return res
         .status(403)
-        .json({ message: "Branch is outside your assigned zone" });
+        .json({ message: "Site is outside your assigned access" });
     data.branchId = branchId;
     if (branchId !== ticket.branchId) data.assigneeId = null;
   }
@@ -292,15 +281,12 @@ exports.update = handle(async (req, res) => {
             {
               role: "STAFF",
               branchId: data.branchId || ticket.branchId,
-              ...(user.operatorId || user.ownedOperator
-                ? { operatorId: user.operatorId || user.ownedOperator.id }
-                : {}),
             },
           ],
         },
       });
       if (!assignee)
-        fail("Assignee must be an eligible technician in this branch or HQ");
+        fail("Assignee must be an eligible technician at this site or HQ");
     }
     data.assigneeId = assigneeId || null;
   }

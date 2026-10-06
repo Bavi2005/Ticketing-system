@@ -76,29 +76,44 @@ this separate operator account; reseeding preserves its password and company
 name. There is no default operator password. For a running environment, run
 `cd backend && node seed.js` after setting the variables.
 
-On the login page choose **Operator control**, then open **Access control** to
-create HQ, manager, and technician credentials or edit their role/zone/branch.
-HQ and manager accounts retain ticket operations and reporting, but cannot
-create, edit, or bulk-import credentials. The API enforces this rule from the
+Use the shared login page, then open **Access control** to
+create HQ, manager, and technician credentials or edit their role/region/site.
+HQ can edit technician and site manager access; site managers can edit their own
+technicians and assign existing technicians to their site. Only operators register
+new accounts or bulk-import credentials. The API enforces this rule from the
 database role, irrespective of client controls or JWT role claims.
 
 Download the CSV template in Access control. Use HQ_ADMIN / HQ,
-BRANCH_MANAGER / SM, or STAFF / SU. HQ rows leave branch and zone empty; other
-rows use a valid branch code and matching zone. Uploads accept UTF-8 CSV under
+BRANCH_MANAGER / SM, or STAFF / SU. HQ rows leave site and region empty; other
+rows use a valid site code and matching region. Uploads accept UTF-8 CSV under
 500 KB with up to 500 accounts. Use **Validate & preview** before importing.
-Invalid roles, branches, zones, duplicate emails, and existing accounts reject
+Invalid roles, sites, regions, duplicate emails, and existing accounts reject
 the whole batch. Passwords are hashed and never returned in previews or the
 directory. Users can change their own password under Profile.
 
-Operators have platform-wide ticket and credential oversight, including
-legacy users without operator ownership. Managers retain their assigned zone
-and existing ownership restrictions. HQ retains company-wide ticket operations.
-The operator dashboard checks `/ready` for database connectivity. Integration
-and billing statuses remain **Not configured / Not linked** until actual
-providers are implemented; payment balances and provider health are not inferred.
+Operators and HQ have platform-wide ticket oversight. Site managers see tickets
+at their site plus tickets raised by or assigned to their current technicians.
+The site-manager **Add technician to my site** action moves an existing STAFF
+account to the manager's own site, preserving the password, role, ownership,
+and access-enabled flag. It does not create a new account or rewrite historical
+ticket site IDs. Destination site and technician role are enforced by the API.
+
+Docker startup runs `prisma db push` before the seed, adding `User.accessEnabled`
+with a default of true. For a manual existing-database upgrade, the additive SQL
+also adds this field; run the seed afterwards to populate the catalogue. Seeding
+renames the original BR1–BR16 demo sites in the supplied order while keeping
+foreign-key IDs, adds BR17–BR26, and sets current user regions to their site's
+region. Existing account passwords and disabled-access flags are preserved.
+
+The shared `/api/reports/public` endpoint is intentionally available without
+login. It exposes opening/closure counts and six recent anonymized outcome
+timelines, never titles, descriptions, names, emails, or comments. Formal
+CLOSED timestamps drive closure graphs; RESOLVED is shown separately in recent
+outcomes. Because reopening clears closure timestamps in this model, the report
+reflects current recorded events rather than a permanent audit event log.
 
 Technicians see tickets they raised or are assigned and submit only for their
-account's branch. Technicians may resume, wait or resolve active tickets;
+account's site. Technicians may resume, wait or resolve active tickets;
 managers close resolved tickets or escalate to HQ. Waiting pauses the SLA
 without erasing a breach that occurred before the pause. Resuming extends the
 original deadlines by the pause duration. Historical NEW/ACKNOWLEDGED tickets

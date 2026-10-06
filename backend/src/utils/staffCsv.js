@@ -44,7 +44,7 @@ function parseStaffCsv(input) {
   if (row.some((v) => v.trim())) rows.push(row);
   if (rows.length < 2 || rows.length > 501)
     fail("CSV must contain a header and 1–500 staff rows");
-  const header = rows.shift().map((v) => v.trim().toLowerCase());
+  const header = rows.shift().map((v) => ({ site_code: "branch_code", region: "zone" }[v.trim().toLowerCase()] || v.trim().toLowerCase()));
   const required = ["name", "email", "password", "role", "branch_code"];
   const allowed = [...required, "zone"];
   if (
@@ -53,7 +53,7 @@ function parseStaffCsv(input) {
     header.some((k) => !allowed.includes(k))
   )
     fail(
-      "CSV headers: name,email,password,role,branch_code,zone (zone is optional)",
+      "CSV headers: name,email,password,role,site_code,region (region is optional)",
     );
   return rows.map((values, index) => {
     if (values.length !== header.length)

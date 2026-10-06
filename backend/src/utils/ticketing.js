@@ -6,16 +6,12 @@ const categories = [
   "Gas System",
   "Elevator",
 ];
-const zones = ["West MY", "East MY"];
+const { regions } = require("./sites");
+// Retain stored field names for existing databases; UI uses region/site exclusively.
+const zones = regions;
 const statuses = ["IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"];
 const sla = { CRITICAL: [1, 4], HIGH: [4, 12], MEDIUM: [8, 24], LOW: [24, 72] };
-const zoneOf = (branch) =>
-  branch
-    ? branch.zone ||
-      (/sabah|sarawak|labuan/i.test(`${branch.name} ${branch.location || ""}`)
-        ? "East MY"
-        : "West MY")
-    : "__NO_ZONE__";
+const zoneOf = (site) => site?.zone || "__NO_REGION__";
 const completed = (t) => ["RESOLVED", "CLOSED"].includes(t.status);
 const missed = (t, now = new Date()) =>
   new Date(
@@ -35,12 +31,7 @@ const scope = (user) =>
         }
       : user.role === "BRANCH_MANAGER"
         ? {
-            ...(user.zone || user.branch
-              ? { branch: { zone: user.zone || zoneOf(user.branch) } }
-              : { branchId: user.branchId || "__NO_BRANCH__" }),
-            ...(user.operatorId
-              ? { requester: { operatorId: user.operatorId } }
-              : {}),
+            OR: [{ branchId: user.branchId || "__NO_BRANCH__" }, { requester: { role: "STAFF", branchId: user.branchId || "__NO_BRANCH__" } }, { assignee: { role: "STAFF", branchId: user.branchId || "__NO_BRANCH__" } }],
           }
         : { id: "__NO_ACCESS__" };
 const fail = (message) => {
@@ -61,7 +52,7 @@ function filters(query, user) {
     if (!categories.includes(query.category)) fail("Invalid service category");
     where.category = query.category;
   }
-  if (query.zone && !zones.includes(query.zone)) fail("Invalid zone");
+  if (query.zone && !zones.includes(query.zone)) fail("Invalid region");
   if (
     query.metric &&
     !["total", "unresolved", "resolved", "missed", "within"].includes(

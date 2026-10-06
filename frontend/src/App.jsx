@@ -34,6 +34,7 @@ import {
 import "./App.css";
 import StaffSettings from "./components/StaffSettings";
 import OperatorControlCenter from "./components/OperatorControlCenter";
+import ReportingPanel from "./components/ReportingPanel";
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || "" });
 const categories = [
@@ -220,10 +221,11 @@ export default function App() {
         headers: { Authorization: `Bearer ${session.token}` },
         params,
       };
-      const [tickets, summary, meta] = await Promise.all([
+      const [tickets, summary, meta, me] = await Promise.all([
         api.get("/api/tickets", config),
         api.get("/api/tickets/dashboard", config),
         api.get("/api/tickets/metadata", config),
+        api.get("/api/auth/me", config),
       ]);
       if (id === requestId.current) {
         loadedScope.current = scopeKey;
@@ -234,6 +236,10 @@ export default function App() {
             : null,
         );
         setMetadata(meta.data);
+        if (JSON.stringify(me.data) !== JSON.stringify(session.user)) {
+          const updated = { ...session, user: me.data };
+          localStorage.setItem("ticketSession", JSON.stringify(updated)); setSession(updated);
+        }
       }
     } catch (e) {
       if (id === requestId.current) {
@@ -261,9 +267,11 @@ export default function App() {
     );
     return () => clearInterval(timer);
   }, [load, session]);
+  if (!session && page === "reporting") return <main className="public-report"><div className="public-report-head"><Brand/><button className="primary" onClick={() => navigate("overview")}>Sign in</button></div><ReportingPanel api={api}/></main>;
   if (!session)
     return (
       <Login
+        report={() => navigate("reporting")}
         onLogin={(s) => {
           localStorage.setItem("ticketSession", JSON.stringify(s));
           setFilters(initialFilters());
@@ -319,9 +327,8 @@ export default function App() {
             ["tickets", Ticket, manager ? "Ticket register" : "My ticket"],
             ["new", Plus, "Raise a ticket"],
             ["reporting", BarChart3, "Reporting"],
-            ["users", Settings, "Access control"],
           ]
-            .filter(([key]) => key === "users" ? operator : manager || key !== "reporting")
+
             .map(([key, Icon, name]) => (
               <button
                 key={key}
@@ -374,7 +381,7 @@ export default function App() {
                       : session.user.role === "OPERATOR"
                         ? "Operator"
                         : manager
-                          ? `${session.user.zone || session.user.branch?.zone || "Zone"} manager`
+                          ? `${session.user.branch?.name || "Site"} manager`
                           : "Staff requester"}
                   </small>
                 </div>
@@ -388,6 +395,7 @@ export default function App() {
               >
                 <UserCircle size={17} /> Profile details
               </button>
+              {manager && <button role="menuitem" onClick={() => { navigate("users"); setProfileOpen(false); }}><Settings size={17}/> Access control</button>}
               <button role="menuitem" className="logout-menu" onClick={logout}>
                 <LogOut size={17} /> Log out
               </button>
@@ -437,7 +445,7 @@ export default function App() {
               </button>
             </div>
           )}
-          {!["new", "profile", "users"].includes(page) &&
+          {!["new", "profile", "users", "reporting"].includes(page) &&
             (manager || page !== "overview") && (
               <div className="period-toolbar">
                 <div className="period-filter" ref={periodMenu}>
@@ -516,7 +524,7 @@ export default function App() {
                 </button>
               </div>
             )}
-          {page === "users" && operator ? (
+          {page === "users" && manager ? (
             <StaffSettings
               api={api}
               headers={headers}
@@ -552,8 +560,8 @@ export default function App() {
                 setNotice("Profile details updated.");
               }}
             />
-          ) : page === "reporting" && manager ? (
-            <ReportingPanel />
+          ) : page === "reporting" ? (
+            <ReportingPanel api={api} />
           ) : (
             <div
               className={`dashboard-layout ${manager && page === "overview" ? "manager-overview-layout" : "full-dashboard-layout"}`}
@@ -733,8 +741,7 @@ export default function App() {
     </div>
   );
 }
-function Login({ onLogin }) {
-  const [operatorLogin, setOperatorLogin] = useState(false);
+function Login({ onLogin, report }) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
@@ -744,7 +751,7 @@ function Login({ onLogin }) {
     setBusy(true);
     setError("");
     try {
-      onLogin((await api.post("/api/auth/login", { email, password, portal: operatorLogin ? "operator" : "operations" })).data);
+      onLogin((await api.post("/api/auth/login", { email, password })).data);
     } catch (e) {
       setError(
         e.response?.data?.message || "Unable to sign in. Please try again.",
@@ -767,7 +774,7 @@ function Login({ onLogin }) {
           <p>
             One workspace for service teams.
             <br />
-            Complete clarity from branch to headquarters.
+            Complete clarity from site to headquarters.
           </p>
           <div className="login-orbit">
             <Activity size={70} />
@@ -785,12 +792,8 @@ function Login({ onLogin }) {
           <span className="login-badge">
             <ShieldCheck size={16} /> SECURE WORKSPACE
           </span>
-          <div className="login-mode" aria-label="Login portal">
-            <button type="button" className={operatorLogin ? "secondary" : "primary"} aria-pressed={!operatorLogin} disabled={busy} onClick={() => { setOperatorLogin(false); setError(""); }}>Operations</button>
-            <button type="button" className={operatorLogin ? "primary" : "secondary"} aria-pressed={operatorLogin} disabled={busy} onClick={() => { setOperatorLogin(true); setError(""); }}>Operator control</button>
-          </div>
-          <h2>{operatorLogin ? "System control login." : "Welcome back."}</h2>
-          <p className="muted">{operatorLogin ? "Sign in with your dedicated operator account." : "Sign in to your operations workspace."}</p>
+          <h2>Welcome back.</h2>
+          <p className="muted">One login for technicians, site managers, HQ, and operators.</p>
           {error && (
             <div className="error" role="alert">
               {error}
@@ -822,8 +825,9 @@ function Login({ onLogin }) {
             {busy ? "Signing in…" : "Enter workspace"}
             <ArrowUpRight size={18} />
           </button>
+          <button type="button" className="secondary public-report-link" onClick={report}><BarChart3 size={17}/> View public report</button>
           <p className="login-help">
-            Your role connects you to the right branches and services. Contact
+            Your role connects you to the right sites and services. Contact
             your administrator for access.
           </p>
         </form>
@@ -901,8 +905,8 @@ function ProfileSettings({ session, headers, back, done }) {
               <dd>{label(session.user.role)}</dd>
             </div>
             <div>
-              <dt>Branch</dt>
-              <dd>{session.user.branch?.name || "All branches"}</dd>
+              <dt>Site</dt>
+              <dd>{session.user.branch?.name || "All sites"}</dd>
             </div>
           </dl>
         </div>
@@ -1086,22 +1090,6 @@ function MyDashboard({ tickets, summary, open, onFilter }) {
     </>
   );
 }
-function ReportingPanel() {
-  return (
-    <section className="panel reporting-placeholder">
-      <BarChart3 size={32} />
-      <p className="eyebrow">AI-ASSISTED REPORTING</p>
-      <h2>Generated operational reports are coming soon.</h2>
-      <p className="muted">
-        This area is reserved for role-aware summaries, trends, and downloadable
-        reports generated from the selected reporting period.
-      </p>
-      <span className="live-chip">
-        <i /> PLANNED
-      </span>
-    </section>
-  );
-}
 function ScopePanel({ metadata, filters, setFilters, hq }) {
   const branches = (metadata?.branches || []).filter(
     (branch) => !filters.zone || branch.zone === filters.zone,
@@ -1112,7 +1100,7 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
         <div>
           <h2>Operational scope</h2>
           <p className="muted">
-            Choose the zones and branches shown in the dashboard.
+            Choose the regions and sites shown in the dashboard.
           </p>
         </div>
         <button
@@ -1125,7 +1113,7 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
       <div className="dashboard-scope-grid">
         <div className="dashboard-scope-column">
           <div className="scope-label">
-            <MapPin size={15} /> ZONES
+            <MapPin size={15} /> REGIONS
           </div>
           <div className="zone-list">
             {["", ...(metadata?.zones || [])].map((zone) => (
@@ -1136,7 +1124,7 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
                 onClick={() => setFilters({ ...filters, zone, branchId: "" })}
               >
                 <span className="radio" />
-                {zone || "All zones"}
+                {zone === "EC" ? "East Coast (EC)" : zone || "All regions"}
                 {filters.zone === zone && <CheckCheck size={15} />}
               </button>
             ))}
@@ -1144,7 +1132,7 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
         </div>
         <div className="dashboard-scope-column">
           <div className="scope-label">
-            <Building2 size={15} /> BRANCHES / STATES
+            <Building2 size={15} /> SITES
           </div>
           <div className="branch-list">
             <button
@@ -1152,7 +1140,7 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
               aria-pressed={!filters.branchId}
               onClick={() => setFilters({ ...filters, branchId: "" })}
             >
-              {hq ? "All branches" : "Accessible branches"}
+              {hq ? "All sites" : "Accessible sites"}
               <span>{branches.length}</span>
             </button>
             {branches.map((branch) => (
@@ -1236,7 +1224,7 @@ function TicketList({ tickets, open, compact }) {
             <Search size={16} />
             <input
               aria-label="Search tickets"
-              placeholder="Search reference, title, branch…"
+              placeholder="Search reference, title, site…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -1272,7 +1260,7 @@ function TicketList({ tickets, open, compact }) {
           <thead>
             <tr>
               <th>Service request</th>
-              <th>Branch / system</th>
+              <th>Site / system</th>
               <th>Status</th>
               <th>SLA</th>
               <th>
@@ -1295,7 +1283,7 @@ function TicketList({ tickets, open, compact }) {
                     <b>{t.title}</b>
                   </button>
                 </td>
-                <td data-label="Branch / system">
+                <td data-label="Site / system">
                   {t.branch?.name}
                   <small>{t.category}</small>
                 </td>
@@ -1396,7 +1384,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
         )}
         {locked && !own && (
           <div className="error">
-            Your account needs an assigned branch. Contact your manager.
+            Your account needs an assigned site. Contact your manager.
           </div>
         )}
         <label>
@@ -1430,10 +1418,10 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
         </div>
         <div className="two">
           <label>
-            Zone
+            Region
             <select
               required
-              aria-label="Zone"
+              aria-label="Region"
               disabled={locked}
               value={effectiveZone}
               onChange={(e) =>
@@ -1441,23 +1429,23 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
               }
             >
               <option value="" disabled>
-                Select zone
+                Select region
               </option>
-              {["West MY", "East MY"].map((z) => (
+              {(metadata?.zones || []).map((z) => (
                 <option key={z}>{z}</option>
               ))}
             </select>
           </label>
           <label>
-            Branch / state
+            Site
             <select
-              aria-label="Branch / state"
+              aria-label="Site"
               disabled={locked}
               required
               {...field("branchId")}
             >
               <option value="" disabled>
-                Select branch
+                Select site
               </option>
               {metadata?.submissionBranches
                 .filter((b) => b.zone === effectiveZone)
@@ -1518,7 +1506,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
         ))}
         <p className="muted">
           <ShieldCheck size={14} /> Requests are visible to you, the destination
-          branch’s managers and HQ.
+          site’s managers and HQ.
         </p>
       </section>
     </div>
@@ -1608,7 +1596,7 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
       <p className="ticket-description">{current.description}</p>
       <div className="ticket-facts">
         <div>
-          Branch<b>{current.branch?.name}</b>
+          Site<b>{current.branch?.name}</b>
         </div>
         <div>
           Raised by<b>{current.requester?.name}</b>
@@ -1673,7 +1661,7 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
         >
           <div className="two">
             <label>
-              Zone / branch
+              Region / site
               <select
                 value={branch}
                 onChange={(e) => {

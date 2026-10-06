@@ -2,48 +2,32 @@ require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 const prisma = new PrismaClient();
+const { sites } = require("./src/utils/sites");
 const hoursAgo = (h) => new Date(Date.now() - h * 3600000);
 const sla = { CRITICAL: [1, 4], HIGH: [4, 12], MEDIUM: [8, 24], LOW: [24, 72] };
 
 async function main() {
   const staffHash = await bcrypt.hash("password123", 12);
   const adminHash = await bcrypt.hash("admin123", 12);
-  const states = [
-    "Selangor",
-    "Johor",
-    "Penang",
-    "Pahang",
-    "Sabah",
-    "Sarawak",
-    "Perak",
-    "Kedah",
-    "Kelantan",
-    "Terengganu",
-    "Perlis",
-    "Negeri Sembilan",
-    "Melaka",
-    "Kuala Lumpur",
-    "Putrajaya",
-    "Labuan",
-  ];
-  const allBranches = await Promise.all(
-    states.map((name, i) =>
-      prisma.branch.upsert({
-        where: { code: `BR${i + 1}` },
-        update: {
-          name,
-          location: name,
-          zone: /Sabah|Sarawak|Labuan/.test(name) ? "East MY" : "West MY",
-        },
-        create: {
-          code: `BR${i + 1}`,
-          name,
-          location: name,
-          zone: /Sabah|Sarawak|Labuan/.test(name) ? "East MY" : "West MY",
-        },
-      }),
-    ),
-  );
+  const allBranches = await Promise.all(sites.map((site) => prisma.branch.upsert({
+    where: { code: site.code },
+    update: { name: site.name, location: site.name, zone: site.region },
+    create: { code: site.code, name: site.name, location: site.name, zone: site.region },
+  })));
+  // Existing demo accounts follow the region of their retained site ID.
+  for (const site of allBranches)
+    await prisma.user.updateMany({ where: { branchId: site.id }, data: { zone: site.zone } });
+  const demoHash = await bcrypt.hash("DemoSite2026!", 12);
+  for (const site of allBranches) {
+    const slug = site.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    for (const [prefix, role] of [["manager", "BRANCH_MANAGER"], ["tech", "STAFF"]]) {
+      await prisma.user.upsert({
+        where: { email: `${prefix}-${slug}@test.com` },
+        update: {},
+        create: { email: `${prefix}-${slug}@test.com`, name: `${site.name} ${prefix === "tech" ? "Technician" : "Manager"}`, role, branchId: site.id, zone: site.zone, passwordHash: demoHash },
+      });
+    }
+  }
   const branches = allBranches.slice(0, 3);
   // Bootstrap a dedicated system-control account; never reset its password on redeploy.
   if (process.env.OPERATOR_EMAIL || process.env.OPERATOR_PASSWORD) {
@@ -87,12 +71,13 @@ async function main() {
     managers.push(
       await prisma.user.upsert({
         where: { email: `managerbranch${n}@test.com` },
-        update: {},
+        update: { name: `${branch.name} Manager`, zone: branch.zone },
         create: {
           email: `managerbranch${n}@test.com`,
-          name: `Branch ${n} Manager`,
+          name: `${branch.name} Manager`,
           role: "BRANCH_MANAGER",
           branchId: branch.id,
+          zone: branch.zone,
           passwordHash: adminHash,
         },
       }),
@@ -114,6 +99,7 @@ async function main() {
             name: `Test User ${i}`,
             branchId: branches[0].id,
             role: "STAFF",
+            zone: branches[0].zone,
           },
         });
         continue;
@@ -126,6 +112,7 @@ async function main() {
         email,
         name: `Test User ${i}`,
         branchId: branches[0].id,
+        zone: branches[0].zone,
         role: "STAFF",
         passwordHash: staffHash,
       },
@@ -166,7 +153,7 @@ async function main() {
       ],
       ["Building automation schedule incorrect", "BAS", "LOW", "WAITING"],
       ["Gas pressure sensor inspection", "Gas System", "HIGH", "RESOLVED"],
-      ["Passenger lift door fault", "Elevator", "CRITICAL", "RESOLVED"],
+      ["Passenger lift door fault", "Elevator", "CRITICAL", "CLOSED"],
     ];
     for (let i = 0; i < 60; i++) {
       const [title, category, priority, status] = samples[i % samples.length];
@@ -190,13 +177,15 @@ async function main() {
             "IN_PROGRESS",
             "WAITING",
             "RESOLVED",
+            "CLOSED",
           ].includes(status)
             ? hoursAgo((i + 1) * 20 - 0.5)
             : null,
           waitingSince:
             status === "WAITING" ? hoursAgo((i + 1) * 20 - 1) : null,
+          closedAt: status === "CLOSED" ? hoursAgo((i + 1) * 20 - (i % 2 ? resolution + 2 : resolution - 1) - .5) : null,
           resolvedAt:
-            status === "RESOLVED"
+            ["RESOLVED", "CLOSED"].includes(status)
               ? hoursAgo(
                   (i + 1) * 20 - (i % 2 ? resolution + 2 : resolution - 1),
                 )

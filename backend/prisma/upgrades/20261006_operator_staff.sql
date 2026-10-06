@@ -3,9 +3,9 @@
 -- New databases: prisma db push. Do not use the legacy receipt migrations.
 ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'OPERATOR';
 BEGIN;
-ALTER TABLE "Branch" ADD COLUMN IF NOT EXISTS "zone" TEXT NOT NULL DEFAULT 'West MY';
-UPDATE "Branch" SET "zone" = 'East MY' WHERE concat("name", ' ', "location") ~* '(sabah|sarawak|labuan)';
+ALTER TABLE "Branch" ADD COLUMN IF NOT EXISTS "zone" TEXT NOT NULL DEFAULT 'CENTRAL';
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "zone" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accessEnabled" BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "operatorId" TEXT;
 CREATE TABLE IF NOT EXISTS "Operator" (
   "id" TEXT NOT NULL PRIMARY KEY,

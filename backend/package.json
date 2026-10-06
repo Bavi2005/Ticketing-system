@@ -4,7 +4,7 @@
   "description": "",
   "main": "src/server.js",
   "scripts": {
-    "test": "jest tests/ticketing.unit.test.js tests/staff.unit.test.js --runInBand",
+    "test": "jest tests/ticketing.unit.test.js tests/staff.unit.test.js tests/publicReport.unit.test.js --runInBand",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node seed.js",

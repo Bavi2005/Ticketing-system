@@ -7,6 +7,7 @@ const publicUser = (user) => ({
   email: user.email,
   name: user.name,
   role: user.role,
+  accessEnabled: user.accessEnabled,
   branchId: user.branchId,
   zone: user.zone,
   operatorId: user.operatorId,
@@ -27,11 +28,8 @@ exports.login = async (req, res, next) => {
       where: { email },
       include: { branch: true, ownedOperator: true },
     });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash)))
+    if (!user || user.accessEnabled === false || !(await bcrypt.compare(password, user.passwordHash)))
       return res.status(401).json({ message: "Invalid email or password" });
-    if ((req.body.portal === "operator" && user.role !== "OPERATOR") ||
-        (req.body.portal === "operations" && user.role === "OPERATOR"))
-      return res.status(403).json({ message: "Use the login portal for your account role" });
     res.json({ token: tokenFor(user), user: publicUser(user) });
   } catch (error) {
     next(error);

@@ -7,6 +7,7 @@ const select = {
   name: true,
   email: true,
   role: true,
+  accessEnabled: true,
   zone: true,
   branchId: true,
   operatorId: true,
@@ -24,8 +25,10 @@ function requireOperator(user) {
     throw Object.assign(new Error("Credential management is restricted to the operator account"), { status: 403 });
 }
 function staffScope(user) {
-  requireOperator(user);
-  return { role: { in: ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"] } };
+  if (user.role === "OPERATOR") return { role: { in: ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"] } };
+  if (user.role === "HQ_ADMIN") return { role: { in: ["STAFF", "BRANCH_MANAGER"] } };
+  if (user.role === "BRANCH_MANAGER") return { role: "STAFF", branchId: user.branchId || "__NO_SITE__" };
+  throw Object.assign(new Error("Access control requires an operator, HQ or site manager account"), { status: 403 });
 }
 function validateIdentity(row, passwordRequired = true) {
   const name = String(row.name || "").trim();
@@ -47,26 +50,32 @@ function validateIdentity(row, passwordRequired = true) {
     );
   return { name, email };
 }
-async function validateStaff(row, actor, branches) {
-  requireOperator(actor);
-  const identity = validateIdentity(row);
+async function validateStaff(row, actor, branches, editing = false) {
+  if (!editing) requireOperator(actor);
+  const identity = validateIdentity(row, !editing);
   const inputRole = String(row.role || "STAFF")
     .trim()
     .toUpperCase();
   const role = { SU: "STAFF", SM: "BRANCH_MANAGER", HQ: "HQ_ADMIN" }[inputRole] || inputRole;
   if (!["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"].includes(role))
     fail("Role must be STAFF, BRANCH_MANAGER or HQ_ADMIN");
+  if (actor.role === "HQ_ADMIN" && role === "HQ_ADMIN")
+    throw Object.assign(new Error("HQ can assign technician or site manager access only"), { status: 403 });
+  if (actor.role === "BRANCH_MANAGER" && role !== "STAFF")
+    throw Object.assign(new Error("Site managers can assign technician access only"), { status: 403 });
   const operatorId = actor.ownedOperator?.id;
-  if (!operatorId) fail("Operator account is not configured");
+  if (actor.role === "OPERATOR" && !operatorId) fail("Operator account is not configured");
   if (role === "HQ_ADMIN")
     return { ...identity, role, branchId: null, zone: null, operatorId };
   const branch = branches.find(
-    (b) => b.code === String(row.branch_code || "").trim(),
+    (b) => b.code === String(row.site_code || row.branch_code || "").trim(),
   );
-  if (!branch) fail("Unknown branch_code");
-  const zone = String(row.zone || zoneOf(branch)).trim();
+  if (!branch) fail("Unknown site code");
+  const zone = String(row.region || row.zone || zoneOf(branch)).trim();
   if (!zones.includes(zone) || zone !== zoneOf(branch))
-    fail("Zone must match the branch");
+    fail("Region must match the site");
+  if (actor.role === "BRANCH_MANAGER" && branch.id !== actor.branchId)
+    throw Object.assign(new Error("Technicians must remain at your assigned site"), { status: 403 });
   return {
     ...identity,
     role,
@@ -92,7 +101,7 @@ exports.create = handle(async (req, res) => {
   res.status(201).json(await prisma.user.create({ data, select }));
 });
 exports.update = handle(async (req, res) => {
-  requireOperator(req.user);
+  staffScope(req.user);
   if (req.params.id === req.user.id)
     return res
       .status(403)
@@ -116,9 +125,17 @@ exports.update = handle(async (req, res) => {
     branch_code: oldBranch?.code,
     zone: target.zone || (oldBranch && zoneOf(oldBranch)),
     ...req.body,
-    password: "validation-placeholder",
   };
-  const data = await validateStaff(row, req.user, branches);
+  const data = await validateStaff(row, req.user, branches, true);
+  if (req.body.accessEnabled !== undefined) {
+    if (typeof req.body.accessEnabled !== "boolean") fail("Access must be enabled or disabled");
+    data.accessEnabled = req.body.accessEnabled;
+  }
+  if (req.body.password) {
+    requireOperator(req.user);
+    validateIdentity({ ...row, password: req.body.password });
+    data.passwordHash = await bcrypt.hash(req.body.password, 12);
+  }
   // Preserve ownership while changing role or branch access.
   data.operatorId = target.operatorId;
   const updated = await prisma.user.updateMany({
@@ -181,3 +198,21 @@ exports.importCsv = handle(async (req, res) => {
     });
 });
 module.exports.staffScope = staffScope;
+
+exports.technicians = handle(async (req, res) => {
+  if (req.user.role !== "BRANCH_MANAGER" || !req.user.branchId)
+    return res.status(403).json({ message: "A configured site manager is required" });
+  res.json(await prisma.user.findMany({ where: { role: "STAFF", OR: [{ branchId: null }, { branchId: { not: req.user.branchId } }] }, select, orderBy: { name: "asc" } }));
+});
+exports.assignTechnician = handle(async (req, res) => {
+  if (req.user.role !== "BRANCH_MANAGER" || !req.user.branchId)
+    return res.status(403).json({ message: "A configured site manager is required" });
+  const site = await prisma.branch.findUnique({ where: { id: req.user.branchId } });
+  if (!site) fail("Your site is not configured");
+  if (typeof req.body.technicianId !== "string") fail("Choose an existing technician");
+  const target = await prisma.user.findFirst({ where: { id: req.body.technicianId, role: "STAFF" } });
+  if (!target) return res.status(404).json({ message: "Technician not found" });
+  const result = await prisma.user.updateMany({ where: { id: target.id, role: "STAFF", branchId: target.branchId }, data: { branchId: site.id, zone: zoneOf(site) } });
+  if (!result.count) return res.status(409).json({ message: "Assignment changed. Refresh and retry" });
+  res.json(await prisma.user.findUnique({ where: { id: target.id }, select }));
+});

@@ -31,7 +31,7 @@ app.use((req, res, next) => {
     id: "alice",
     role: req.headers["x-role"] || "STAFF",
     branchId: "pahang",
-    branch: { id: "pahang", name: "Pahang", zone: "West MY" },
+    branch: { id: "pahang", name: "Pahang", zone: "CENTRAL" },
   };
   next();
 });
@@ -74,11 +74,11 @@ test("staff have requester scope, managers have branch scope, HQ has company sco
     OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
   });
   expect(scope({ role: "BRANCH_MANAGER", branchId: "pahang" })).toEqual({
-    branchId: "pahang",
+    OR: [{ branchId: "pahang" }, { requester: { role: "STAFF", branchId: "pahang" } }, { assignee: { role: "STAFF", branchId: "pahang" } }],
   });
   expect(scope({ role: "HQ_ADMIN" })).toEqual({});
   expect(scope({ role: "STAFF" }).OR[0].requesterId).toBe("__NO_USER__");
-  expect(scope({ role: "BRANCH_MANAGER" }).branchId).toBe("__NO_BRANCH__");
+  expect(scope({ role: "BRANCH_MANAGER" }).OR[0].branchId).toBe("__NO_BRANCH__");
   expect(scope({ role: "UNKNOWN" })).toEqual({ id: "__NO_ACCESS__" });
 });
 test("list and dashboard cannot override requester scope through a query", async () => {
@@ -152,7 +152,7 @@ test("staff cannot override their assigned branch and new tickets start in progr
   prisma.branch.findUnique.mockResolvedValue({
     id: "pahang",
     name: "Pahang",
-    zone: "West MY",
+    zone: "CENTRAL",
   });
   prisma.ticket.create.mockResolvedValue(ticket);
   const payload = {
@@ -161,7 +161,7 @@ test("staff cannot override their assigned branch and new tickets start in progr
     category: "CCTV",
     priority: "HIGH",
     branchId: "pahang",
-    zone: "West MY",
+    zone: "CENTRAL",
     requesterId: "someone-else",
   };
   expect((await request(app).post("/tickets").send(payload)).status).toBe(201);
@@ -181,7 +181,7 @@ test("staff cannot override their assigned branch and new tickets start in progr
     (
       await request(app)
         .post("/tickets")
-        .send({ ...payload, zone: "East MY" })
+        .send({ ...payload, zone: "EC" })
     ).status,
   ).toBe(400);
 });
@@ -199,7 +199,7 @@ test("invalid category and prototype priority values cannot create tickets", asy
             description: "Test",
             category: "HVAC",
             priority: "HIGH",
-            zone: "West MY",
+            zone: "CENTRAL",
             ...payload,
           })
       ).status,
@@ -355,13 +355,13 @@ test("HQ reads all branches and receives internal notes", async () => {
   expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({});
 });
 
-test("manager list and dashboard retain zone isolation", async () => {
+test("manager list and dashboard retain own-site or assigned-technician isolation", async () => {
   for (const path of ["/tickets", "/dashboard"]) {
     await request(app)
       .get(`${path}?branchId=sabah`)
       .set("x-role", "BRANCH_MANAGER");
     expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({
-      branch: { zone: "West MY" },
+      OR: [{ branchId: "pahang" }, { requester: { role: "STAFF", branchId: "pahang" } }, { assignee: { role: "STAFF", branchId: "pahang" } }],
       AND: [{ branchId: "sabah" }],
     });
   }
@@ -415,12 +415,12 @@ test("waiting freezes SLA and resuming credits the exact pause once", async () =
       .status,
   ).toBe(409);
 });
-test("managers can move within their zone and escalate to HQ, but cannot move to another zone", async () => {
+test("managers can retain their own site and escalate to HQ but cannot move to other sites", async () => {
   prisma.ticket.findFirst.mockResolvedValue(ticket);
   prisma.branch.findUnique.mockResolvedValue({
     id: "sabah",
     name: "Sabah",
-    zone: "East MY",
+    zone: "EC",
   });
   expect(
     (
@@ -431,16 +431,16 @@ test("managers can move within their zone and escalate to HQ, but cannot move to
     ).status,
   ).toBe(403);
   prisma.branch.findUnique.mockResolvedValue({
-    id: "selangor",
-    name: "Selangor",
-    zone: "West MY",
+    id: "pahang",
+    name: "Own site",
+    zone: "CENTRAL",
   });
   expect(
     (
       await request(app)
         .patch("/tickets/t1")
         .set("x-role", "BRANCH_MANAGER")
-        .send({ branchId: "selangor" })
+        .send({ branchId: "pahang" })
     ).status,
   ).toBe(200);
   prisma.user.findFirst.mockResolvedValue({ id: "hq" });
