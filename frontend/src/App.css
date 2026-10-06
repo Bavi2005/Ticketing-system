@@ -3321,7 +3321,7 @@ textarea {
   }
 }
 
-/* Dashboard flow: period menu, horizontal scope, and system selection. */
+/* Dashboard flow: period menu, scope sidebar, and system selection. */
 .dashboard-layout.full-dashboard-layout {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -3396,62 +3396,95 @@ textarea {
   min-width: 0;
   padding: 9px;
 }
+/* Operational scope occupies the left dashboard column only. */
+.dashboard-layout.manager-overview-layout,
+.shell.sidebar-collapsed .dashboard-layout.manager-overview-layout {
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: 22px;
+  align-items: stretch;
+}
+.dashboard-scope-sidebar {
+  min-width: 0;
+}
 .dashboard-scope {
-  margin-top: 26px;
+  height: 100%;
+  min-height: 620px;
+  padding: 24px;
 }
 .dashboard-scope-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 20px;
+  display: grid;
+  gap: 12px;
 }
 .dashboard-scope h2 {
-  font-size: 20px;
+  font-size: 18px;
 }
 .dashboard-scope p.muted {
-  margin-top: 7px;
+  margin-top: 8px;
   font-size: 13px;
+  line-height: 1.6;
 }
 .dashboard-scope .reset-scope {
-  width: auto;
-  flex-shrink: 0;
-  margin: 0;
-  padding: 8px 0;
-  border: 0;
+  text-align: left;
   color: var(--text-purple);
 }
 .dashboard-scope-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 28px;
-  margin-top: 22px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 24px;
 }
 .dashboard-scope-column {
   min-width: 0;
 }
 .dashboard-scope-column + .dashboard-scope-column {
-  padding-left: 28px;
-  border-left: 1px solid var(--border);
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
 }
 .dashboard-scope .scope-label {
   margin: 0 0 12px;
 }
 .dashboard-scope .branch-list {
-  max-height: 250px;
-}
-.dashboard-layout.manager-overview-layout {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  max-height: 440px;
 }
 .dashboard-health-panel {
-  display: block;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 22px;
 }
-@media (max-width: 1100px) {
-  .dashboard-layout.manager-overview-layout {
+.dashboard-health-panel .sla-panel {
+  display: block;
+  min-width: 0;
+  padding: 22px;
+}
+.dashboard-health-panel .sla-ring {
+  margin: 20px auto 14px;
+  width: 150px;
+  height: 150px;
+}
+.dashboard-health-panel .sla-panel > p {
+  margin-bottom: 18px;
+}
+.dashboard-health-panel .sla-explainer {
+  margin-top: 14px;
+  padding-top: 14px;
+}
+@media (max-width: 1000px) {
+  .dashboard-layout.manager-overview-layout,
+  .shell.sidebar-collapsed .dashboard-layout.manager-overview-layout {
     grid-template-columns: minmax(0, 1fr);
   }
-  .dashboard-health-panel {
-    max-width: 460px;
+  .dashboard-scope {
+    min-height: 0;
+  }
+  .dashboard-scope-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-scope-column + .dashboard-scope-column {
+    padding: 0 0 0 20px;
+    border-top: 0;
+    border-left: 1px solid var(--border);
   }
 }
 .system-grid {
@@ -3538,17 +3571,9 @@ textarea {
   }
 }
 
-/* Compact overview with paired health cards on the left. */
+/* Compact overview controls and staff settings. */
 .page-heading { margin-bottom: 12px; }
 .period-toolbar { gap: 12px; align-items: center; margin-bottom: 18px; }
-.period-caption { margin-right: auto; color: var(--text-muted); font-size: 13px; }
-.dashboard-layout.manager-overview-layout { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); gap: 22px; }
-.dashboard-health-panel, .user-health-panel { display: grid; gap: 18px; align-content: start; }
-.dashboard-health-panel .sla-panel { padding: 22px; }
-.dashboard-health-panel .sla-ring { margin: 20px auto 14px; width: 150px; height: 150px; }
-.dashboard-health-panel .sla-panel > p { margin-bottom: 18px; }
-.dashboard-health-panel .sla-explainer { margin-top: 14px; padding-top: 14px; }
-.dashboard-layout.full-dashboard-layout:has(.user-health-panel) { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); }
 .staff-settings { display: grid; gap: 22px; }
 .staff-management-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .staff-settings h2 { display: flex; align-items: center; gap: 10px; font-size: 20px; }
@@ -3569,22 +3594,24 @@ textarea {
 .operator-list { display: grid; gap: 10px; margin-top: 20px; }
 .operator-list article { display: flex; flex-wrap: wrap; gap: 18px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
 .assignment-form { margin: 16px 0 24px; }
-@media (max-width: 1100px) {
-  .dashboard-layout.manager-overview-layout, .dashboard-layout.full-dashboard-layout:has(.user-health-panel) { grid-template-columns: minmax(0, 1fr); }
-  .dashboard-health-panel, .user-health-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; }
-}
 @media (max-width: 650px) {
-  .dashboard-health-panel, .user-health-panel, .staff-management-grid { grid-template-columns: minmax(0, 1fr); }
+  .staff-management-grid { grid-template-columns: minmax(0, 1fr); }
   .period-toolbar { gap: 8px; }
   .staff-settings .panel { padding: 20px; }
 }
 .manager-overview-layout .metric-cards { margin-top: 0; margin-bottom: 22px; }
-.dashboard-health-panel .sla-panel, .user-health-panel .sla-panel { display: block; }
 .shell.sidebar-collapsed .dashboard-layout.full-dashboard-layout { grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 1101px) {
-  .shell.sidebar-collapsed .dashboard-layout.manager-overview-layout,
-  .shell.sidebar-collapsed .dashboard-layout.full-dashboard-layout:has(.user-health-panel) { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); }
-}
-@media (max-width: 650px) {
-  .dashboard-health-panel, .user-health-panel { order: 2; }
+/* Keep both health cards adjacent on phones without forcing wide content. */
+@media (max-width: 600px) {
+  .dashboard-health-panel { gap: 10px; }
+  .dashboard-health-panel .sla-panel { padding: 12px; }
+  .dashboard-health-panel .panel-heading { gap: 6px; align-items: start; }
+  .dashboard-health-panel .panel-heading h2 { font-size: 14px; }
+  .dashboard-health-panel .panel-heading > svg { display: none; }
+  .dashboard-health-panel .sla-ring { width: 108px; height: 108px; }
+  .dashboard-health-panel .sla-ring strong { font-size: 25px; }
+  .dashboard-health-panel .sla-ring small { font-size: 9px; }
+  .dashboard-health-panel .sla-key { font-size: 11px; gap: 4px; }
+  .dashboard-health-panel .sla-key span { min-width: 0; }
+  .dashboard-health-panel .sla-explainer { font-size: 11px; }
 }

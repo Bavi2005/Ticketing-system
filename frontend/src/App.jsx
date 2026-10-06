@@ -438,20 +438,6 @@ export default function App() {
           {!["new", "profile", "users"].includes(page) &&
             (manager || page !== "overview") && (
               <div className="period-toolbar">
-                <span className="period-caption">
-                  {
-                    {
-                      today: "Today",
-                      yesterday: "Yesterday",
-                      week: "Last week",
-                      month: "This month",
-                      last: "Last month",
-                      year: "This year",
-                      all: "All time",
-                      custom: "Custom range",
-                    }[filters.preset]
-                  }
-                </span>
                 <div className="period-filter" ref={periodMenu}>
                   <button
                     className="period-filter-button"
@@ -570,12 +556,14 @@ export default function App() {
             <div
               className={`dashboard-layout ${manager && page === "overview" ? "manager-overview-layout" : "full-dashboard-layout"}`}
             >
-              {page === "overview" && (
-                <aside
-                  className={`scope ${manager ? "dashboard-health-panel" : "user-health-panel"}`}
-                >
-                  <SlaHealth summary={data?.summary} />
-                  <SlaHealth summary={data?.summary} resolution />
+              {manager && page === "overview" && (
+                <aside className="dashboard-scope-sidebar">
+                  <ScopePanel
+                    metadata={metadata}
+                    filters={filters}
+                    setFilters={setFilters}
+                    hq={hq}
+                  />
                 </aside>
               )}
               <div className="dashboard-main">
@@ -587,16 +575,22 @@ export default function App() {
                   data && (
                     <div key={page} className="page-enter">
                       {!manager && page === "overview" ? (
-                        <MyDashboard
-                          tickets={data.tickets}
-                          summary={data.summary}
-                          open={setSelected}
-                          onFilter={(key) => {
-                            setMetric(key);
-                            setCategory(null);
-                            navigate("tickets");
-                          }}
-                        />
+                        <>
+                          <div className="dashboard-health-panel" aria-label="Ticket health">
+                            <SlaHealth summary={data.summary} />
+                            <SlaHealth summary={data.summary} resolution />
+                          </div>
+                          <MyDashboard
+                            tickets={data.tickets}
+                            summary={data.summary}
+                            open={setSelected}
+                            onFilter={(key) => {
+                              setMetric(key);
+                              setCategory(null);
+                              navigate("tickets");
+                            }}
+                          />
+                        </>
                       ) : manager && page === "overview" ? (
                         <>
                           <div className="metric-cards">
@@ -622,12 +616,10 @@ export default function App() {
                               </button>
                             ))}
                           </div>
-                          <ScopePanel
-                            metadata={metadata}
-                            filters={filters}
-                            setFilters={setFilters}
-                            hq={hq}
-                          />
+                          <div className="dashboard-health-panel" aria-label="Ticket health">
+                            <SlaHealth summary={data.summary} />
+                            <SlaHealth summary={data.summary} resolution />
+                          </div>
                         </>
                       ) : manager && page === "tickets" ? (
                         category === null ? (
@@ -1193,7 +1185,7 @@ function SlaHealth({ summary, resolution = false }) {
       </div>
       <p>
         {summary?.total
-          ? `${good} of ${summary.total} tickets ${resolution ? "resolved" : "on time"}`
+          ? `${good} of ${summary.total} tickets ${resolution ? "resolved" : "within SLA"}`
           : "No tickets in this scope"}
       </p>
       <div className="sla-key">
@@ -1371,7 +1363,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
         { headers },
       );
       done(
-        `${data.reference} created for ${data.branch.name}. ${data.branchId !== user.branchId && user.role === "BRANCH_MANAGER" ? "The destination branch and HQ can track it; it is outside your viewing scope." : "You can track this request in your ticket register."}`,
+        `${data.reference} created for ${data.branch.name}. You can track this request in your ticket register.`,
       );
     } catch (e) {
       setError(e.response?.data?.message || "Unable to submit. Please retry.");

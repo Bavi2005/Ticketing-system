@@ -3,7 +3,7 @@
 A responsive engineering operations workspace with live reporting, six service systems, and branch-scoped access.
 
 - Five metric cards retain Total Tickets, Unresolved, Resolved, Missed SLA and Within SLA.
-- SLA Health and Resolution Health sit on the left of the dashboard, with compact period/New ticket controls above the metrics. Resolution Health is resolved (including closed) ÷ total tickets, for the same period and scope.
+- Operational Scope fills the left dashboard panel on desktop and appears only on the overview. SLA Health and Resolution Health sit beside each other in the main dashboard, with compact period/New ticket controls above the five metrics. On smaller screens the scope panel moves above the main content while both health cards remain adjacent. Resolution Health is resolved (including closed) ÷ total tickets, for the same period and scope.
 - Every metric opens HVAC, CCTV, Fire Alarm, BAS, Gas System and Elevator, then the matching tickets.
 - Malaysia reporting dates (UTC+8), zone and branch filters apply consistently to metrics and both health cards.
 - SU / technicians see tickets they raised or are assigned. Their submission branch/zone is fixed to their account. SM / managers manage tickets and staff in their assigned zone; SO / HQ controls the full system.
