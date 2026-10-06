@@ -11,6 +11,7 @@ enum Role {
   STAFF
   BRANCH_MANAGER
   HQ_ADMIN
+  OPERATOR
 }
 enum Priority {
   CRITICAL
@@ -32,6 +33,7 @@ model Branch {
   code String @unique
   name String
   location String?
+  zone String @default("West MY")
   users User[]
   tickets Ticket[]
   createdAt DateTime @default(now())
@@ -43,6 +45,10 @@ model User {
   passwordHash String
   name String
   role Role @default(STAFF)
+  zone String?
+  operatorId String?
+  operator Operator? @relation("OperatorStaff", fields: [operatorId], references: [id])
+  ownedOperator Operator? @relation("OperatorAccount")
   branchId String?
   branch Branch? @relation(fields: [branchId], references: [id])
   tickets Ticket[] @relation("RequesterTickets")
@@ -52,6 +58,16 @@ model User {
   updatedAt DateTime @updatedAt
   @@index([branchId])
   @@index([role])
+  @@index([operatorId])
+}
+
+model Operator {
+  id String @id @default(cuid())
+  name String
+  userId String @unique
+  user User @relation("OperatorAccount", fields: [userId], references: [id])
+  staff User[] @relation("OperatorStaff")
+  createdAt DateTime @default(now())
 }
 
 model Ticket {
@@ -61,7 +77,7 @@ model Ticket {
   description String
   category String
   priority Priority @default(MEDIUM)
-  status TicketStatus @default(NEW)
+  status TicketStatus @default(IN_PROGRESS)
   branchId String
   branch Branch @relation(fields: [branchId], references: [id])
   requesterId String
@@ -73,6 +89,8 @@ model Ticket {
   acknowledgedAt DateTime?
   resolvedAt DateTime?
   closedAt DateTime?
+  waitingSince DateTime?
+  escalatedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   comments TicketComment[]

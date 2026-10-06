@@ -8,9 +8,15 @@ jest.mock("../src/utils/prisma", () => ({
     findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
   },
   branch: { findMany: jest.fn(), findUnique: jest.fn() },
-  user: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+  user: {
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    update: jest.fn(),
+  },
   ticketComment: { create: jest.fn() },
 }));
 const prisma = require("../src/utils/prisma");
@@ -25,6 +31,7 @@ app.use((req, res, next) => {
     id: "alice",
     role: req.headers["x-role"] || "STAFF",
     branchId: "pahang",
+    branch: { id: "pahang", name: "Pahang", zone: "West MY" },
   };
   next();
 });
@@ -44,7 +51,10 @@ const ticket = {
   branchId: "pahang",
   branch: { id: "pahang", name: "Pahang" },
   category: "HVAC",
-  status: "NEW",
+  status: "IN_PROGRESS",
+  priority: "HIGH",
+  responseDueAt: new Date("2026-09-10T04:00:00Z"),
+  updatedAt: new Date("2026-09-10T00:00:00Z"),
   resolutionDueAt: new Date("2026-09-10T12:00:00Z"),
   createdAt: new Date("2026-09-09T20:00:00Z"),
   comments: [
@@ -56,16 +66,18 @@ beforeEach(() => {
   jest.resetAllMocks();
   prisma.ticket.findMany.mockResolvedValue([ticket]);
   prisma.branch.findMany.mockResolvedValue([]);
+  prisma.user.findMany.mockResolvedValue([]);
+  prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
 });
 test("staff have requester scope, managers have branch scope, HQ has company scope; missing identity fails closed", () => {
   expect(scope({ role: "STAFF", branchId: "pahang", id: "alice" })).toEqual({
-    requesterId: "alice",
+    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
   });
   expect(scope({ role: "BRANCH_MANAGER", branchId: "pahang" })).toEqual({
     branchId: "pahang",
   });
   expect(scope({ role: "HQ_ADMIN" })).toEqual({});
-  expect(scope({ role: "STAFF" }).requesterId).toBe("__NO_USER__");
+  expect(scope({ role: "STAFF" }).OR[0].requesterId).toBe("__NO_USER__");
   expect(scope({ role: "BRANCH_MANAGER" }).branchId).toBe("__NO_BRANCH__");
   expect(scope({ role: "UNKNOWN" })).toEqual({ id: "__NO_ACCESS__" });
 });
@@ -73,7 +85,7 @@ test("list and dashboard cannot override requester scope through a query", async
   for (const path of ["/tickets", "/dashboard"]) {
     expect((await request(app).get(`${path}?branchId=sabah`)).status).toBe(200);
     expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({
-      requesterId: "alice",
+      OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
       AND: [{ branchId: "sabah" }],
     });
   }
@@ -136,28 +148,40 @@ test("all five totals, category drilldowns and graph outcomes reconcile", async 
     { date: "2026-09-10", resolved: 1, unresolved: 1 },
   ]);
 });
-test("staff can submit to another branch, with zone enforced and requester fixed to session", async () => {
-  prisma.branch.findUnique.mockResolvedValue({ id: "sabah", name: "Sabah" });
-  prisma.ticket.create.mockResolvedValue({ ...ticket, branchId: "sabah" });
+test("staff cannot override their assigned branch and new tickets start in progress", async () => {
+  prisma.branch.findUnique.mockResolvedValue({
+    id: "pahang",
+    name: "Pahang",
+    zone: "West MY",
+  });
+  prisma.ticket.create.mockResolvedValue(ticket);
   const payload = {
     title: "Camera offline",
     description: "Loading bay",
     category: "CCTV",
     priority: "HIGH",
-    branchId: "sabah",
-    zone: "East MY",
+    branchId: "pahang",
+    zone: "West MY",
     requesterId: "someone-else",
   };
   expect((await request(app).post("/tickets").send(payload)).status).toBe(201);
   expect(prisma.ticket.create.mock.lastCall[0].data).toMatchObject({
-    branchId: "sabah",
+    branchId: "pahang",
     requesterId: "alice",
+    status: "IN_PROGRESS",
   });
   expect(
     (
       await request(app)
         .post("/tickets")
-        .send({ ...payload, zone: "West MY" })
+        .send({ ...payload, branchId: "sabah" })
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await request(app)
+        .post("/tickets")
+        .send({ ...payload, zone: "East MY" })
     ).status,
   ).toBe(400);
 });
@@ -198,17 +222,20 @@ test("out-of-scope IDs cannot be updated or commented on", async () => {
   ).toBe(404);
   expect(prisma.ticket.findFirst.mock.lastCall[0].where).toEqual({
     id: "other",
-    requesterId: "alice",
+    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
   });
   expect(prisma.ticket.update).not.toHaveBeenCalled();
   expect(prisma.ticketComment.create).not.toHaveBeenCalled();
 });
-test("staff cannot change workflow or post internal notes", async () => {
+test("staff can resolve but cannot close or assign tickets or post internal notes", async () => {
   prisma.ticket.findFirst.mockResolvedValue(ticket);
-  prisma.ticketComment.create.mockResolvedValue({});
   expect(
     (await request(app).patch("/tickets/t1").send({ status: "RESOLVED" }))
       .status,
+  ).toBe(200);
+  prisma.ticketComment.create.mockResolvedValue({});
+  expect(
+    (await request(app).patch("/tickets/t1").send({ status: "CLOSED" })).status,
   ).toBe(403);
   expect(
     (
@@ -308,7 +335,7 @@ test("reopening clears completion timestamps and reassignment cannot cross branc
         .send({ status: "IN_PROGRESS" })
     ).status,
   ).toBe(200);
-  expect(prisma.ticket.update.mock.lastCall[0].data).toMatchObject({
+  expect(prisma.ticket.updateMany.mock.lastCall[0].data).toMatchObject({
     resolvedAt: null,
     closedAt: null,
   });
@@ -328,13 +355,13 @@ test("HQ reads all branches and receives internal notes", async () => {
   expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({});
 });
 
-test("manager list and dashboard retain branch isolation", async () => {
+test("manager list and dashboard retain zone isolation", async () => {
   for (const path of ["/tickets", "/dashboard"]) {
     await request(app)
       .get(`${path}?branchId=sabah`)
       .set("x-role", "BRANCH_MANAGER");
     expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({
-      branchId: "pahang",
+      branch: { zone: "West MY" },
       AND: [{ branchId: "sabah" }],
     });
   }
@@ -356,6 +383,93 @@ test("staff can comment on their own submission to another branch", async () => 
   ).toBe(201);
   expect(prisma.ticket.findFirst.mock.lastCall[0].where).toEqual({
     id: "t1",
-    requesterId: "alice",
+    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
   });
+});
+
+test("waiting freezes SLA and resuming credits the exact pause once", async () => {
+  const since = new Date(Date.now() - 3600000);
+  const waiting = {
+    ...ticket,
+    status: "WAITING",
+    waitingSince: since,
+    resolutionDueAt: new Date(since.getTime() + 1000),
+  };
+  expect(missed(waiting, new Date())).toBe(false);
+  prisma.ticket.findFirst.mockResolvedValue(waiting);
+  expect(
+    (await request(app).patch("/tickets/t1").send({ status: "IN_PROGRESS" }))
+      .status,
+  ).toBe(200);
+  const data = prisma.ticket.updateMany.mock.lastCall[0].data;
+  expect(data.waitingSince).toBeNull();
+  expect(data.resolutionDueAt - waiting.resolutionDueAt).toBeGreaterThanOrEqual(
+    3600000,
+  );
+  expect(prisma.ticket.updateMany.mock.lastCall[0].where.updatedAt).toEqual(
+    ticket.updatedAt,
+  );
+  prisma.ticket.updateMany.mockResolvedValue({ count: 0 });
+  expect(
+    (await request(app).patch("/tickets/t1").send({ status: "IN_PROGRESS" }))
+      .status,
+  ).toBe(409);
+});
+test("managers can move within their zone and escalate to HQ, but cannot move to another zone", async () => {
+  prisma.ticket.findFirst.mockResolvedValue(ticket);
+  prisma.branch.findUnique.mockResolvedValue({
+    id: "sabah",
+    name: "Sabah",
+    zone: "East MY",
+  });
+  expect(
+    (
+      await request(app)
+        .patch("/tickets/t1")
+        .set("x-role", "BRANCH_MANAGER")
+        .send({ branchId: "sabah" })
+    ).status,
+  ).toBe(403);
+  prisma.branch.findUnique.mockResolvedValue({
+    id: "selangor",
+    name: "Selangor",
+    zone: "West MY",
+  });
+  expect(
+    (
+      await request(app)
+        .patch("/tickets/t1")
+        .set("x-role", "BRANCH_MANAGER")
+        .send({ branchId: "selangor" })
+    ).status,
+  ).toBe(200);
+  prisma.user.findFirst.mockResolvedValue({ id: "hq" });
+  expect(
+    (
+      await request(app)
+        .patch("/tickets/t1")
+        .set("x-role", "BRANCH_MANAGER")
+        .send({ escalateToHq: true })
+    ).status,
+  ).toBe(200);
+  expect(prisma.ticket.updateMany.mock.lastCall[0].data.assigneeId).toBe("hq");
+  expect(
+    (
+      await request(app)
+        .patch("/tickets/t1")
+        .set("x-role", "BRANCH_MANAGER")
+        .send({ status: "CLOSED" })
+    ).status,
+  ).toBe(400);
+});
+test("legacy statuses cannot be selected", async () => {
+  prisma.ticket.findFirst.mockResolvedValue(ticket);
+  expect(
+    (
+      await request(app)
+        .patch("/tickets/t1")
+        .set("x-role", "HQ_ADMIN")
+        .send({ status: "NEW" })
+    ).status,
+  ).toBe(400);
 });

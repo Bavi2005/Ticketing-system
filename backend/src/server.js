@@ -172,6 +172,7 @@ app.use(
 );
 
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/staff', require('./routes/staffRoutes'));
 
 // Allows the backend to serve the SPA
 // directly if needed.

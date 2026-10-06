@@ -3537,3 +3537,54 @@ textarea {
     right: 16px;
   }
 }
+
+/* Compact overview with paired health cards on the left. */
+.page-heading { margin-bottom: 12px; }
+.period-toolbar { gap: 12px; align-items: center; margin-bottom: 18px; }
+.period-caption { margin-right: auto; color: var(--text-muted); font-size: 13px; }
+.dashboard-layout.manager-overview-layout { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); gap: 22px; }
+.dashboard-health-panel, .user-health-panel { display: grid; gap: 18px; align-content: start; }
+.dashboard-health-panel .sla-panel { padding: 22px; }
+.dashboard-health-panel .sla-ring { margin: 20px auto 14px; width: 150px; height: 150px; }
+.dashboard-health-panel .sla-panel > p { margin-bottom: 18px; }
+.dashboard-health-panel .sla-explainer { margin-top: 14px; padding-top: 14px; }
+.dashboard-layout.full-dashboard-layout:has(.user-health-panel) { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); }
+.staff-settings { display: grid; gap: 22px; }
+.staff-management-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.staff-settings h2 { display: flex; align-items: center; gap: 10px; font-size: 20px; }
+.staff-settings p.muted { margin: 12px 0 20px; font-size: 13px; line-height: 1.6; }
+.staff-settings form, .assignment-form { display: grid; gap: 16px; }
+.staff-settings input, .staff-settings select { width: 100%; min-width: 0; }
+.staff-settings label { display: grid; gap: 8px; }
+.staff-settings label small { color: var(--text-muted); font-weight: normal; }
+.staff-settings .primary, .staff-settings .secondary { width: fit-content; }
+.staff-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.csv-panel > label { margin: 20px 0; }
+.csv-errors { padding: 18px 36px; color: var(--text-danger); max-height: 250px; overflow: auto; }
+.csv-preview { margin-top: 20px; }
+.staff-table-scroll { overflow: auto; max-height: 450px; margin: 16px 0; }
+.staff-table-scroll table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.staff-table-scroll th, .staff-table-scroll td { padding: 14px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+.staff-table-scroll td small { display: block; color: var(--text-muted); margin-top: 5px; }
+.operator-list { display: grid; gap: 10px; margin-top: 20px; }
+.operator-list article { display: flex; flex-wrap: wrap; gap: 18px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+.assignment-form { margin: 16px 0 24px; }
+@media (max-width: 1100px) {
+  .dashboard-layout.manager-overview-layout, .dashboard-layout.full-dashboard-layout:has(.user-health-panel) { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-health-panel, .user-health-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; }
+}
+@media (max-width: 650px) {
+  .dashboard-health-panel, .user-health-panel, .staff-management-grid { grid-template-columns: minmax(0, 1fr); }
+  .period-toolbar { gap: 8px; }
+  .staff-settings .panel { padding: 20px; }
+}
+.manager-overview-layout .metric-cards { margin-top: 0; margin-bottom: 22px; }
+.dashboard-health-panel .sla-panel, .user-health-panel .sla-panel { display: block; }
+.shell.sidebar-collapsed .dashboard-layout.full-dashboard-layout { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1101px) {
+  .shell.sidebar-collapsed .dashboard-layout.manager-overview-layout,
+  .shell.sidebar-collapsed .dashboard-layout.full-dashboard-layout:has(.user-health-panel) { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); }
+}
+@media (max-width: 650px) {
+  .dashboard-health-panel, .user-health-panel { order: 2; }
+}

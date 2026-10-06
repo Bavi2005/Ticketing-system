@@ -8,6 +8,9 @@ const publicUser = (user) => ({
   name: user.name,
   role: user.role,
   branchId: user.branchId,
+  zone: user.zone,
+  operatorId: user.operatorId,
+  ownedOperator: user.ownedOperator,
   branch: user.branch,
 });
 const tokenFor = (user) =>
@@ -22,7 +25,7 @@ exports.login = async (req, res, next) => {
     const password = String(req.body.password || "");
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { branch: true },
+      include: { branch: true, ownedOperator: true },
     });
     if (!user || !(await bcrypt.compare(password, user.passwordHash)))
       return res.status(401).json({ message: "Invalid email or password" });
@@ -35,7 +38,7 @@ exports.me = async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      include: { branch: true },
+      include: { branch: true, ownedOperator: true },
     });
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(publicUser(user));
@@ -47,7 +50,7 @@ exports.updateProfile = async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      include: { branch: true },
+      include: { branch: true, ownedOperator: true },
     });
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -102,7 +105,7 @@ exports.updateProfile = async (req, res, next) => {
     const updated = await prisma.user.update({
       where: { id: user.id },
       data: update,
-      include: { branch: true },
+      include: { branch: true, ownedOperator: true },
     });
     res.json({ token: tokenFor(updated), user: publicUser(updated) });
   } catch (error) {

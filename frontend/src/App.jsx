@@ -32,6 +32,7 @@ import {
   UserCircle,
 } from "lucide-react";
 import "./App.css";
+import StaffSettings from "./components/StaffSettings";
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || "" });
 const categories = [
@@ -44,14 +45,7 @@ const categories = [
 ];
 const icons = [Fan, Video, BellRing, Gauge, Flame, Layers3];
 const priorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-const statuses = [
-  "NEW",
-  "ACKNOWLEDGED",
-  "IN_PROGRESS",
-  "WAITING",
-  "RESOLVED",
-  "CLOSED",
-];
+const statuses = ["IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"];
 const metrics = [
   ["total", "Total Tickets", Ticket, "blue"],
   ["unresolved", "Total Unresolved Tickets", Clock3, "amber"],
@@ -290,6 +284,7 @@ export default function App() {
       new: "Raise a service ticket",
       profile: "Profile details",
       reporting: "Reporting",
+      users: "Settings · Users",
     }[page] || "Operations overview";
   return (
     <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -322,8 +317,9 @@ export default function App() {
             ["tickets", Ticket, manager ? "Ticket register" : "My ticket"],
             ["new", Plus, "Raise a ticket"],
             ["reporting", BarChart3, "Reporting"],
+            ["users", Settings, "Settings · Users"],
           ]
-            .filter(([key]) => manager || key !== "reporting")
+            .filter(([key]) => manager || !["reporting", "users"].includes(key))
             .map(([key, Icon, name]) => (
               <button
                 key={key}
@@ -352,7 +348,15 @@ export default function App() {
             <span className="top-avatar">{initials(session.user.name)}</span>
             <span>
               <b>{session.user.name}</b>
-              <small>{hq ? "HQ" : manager ? "Manager" : "Staff"}</small>
+              <small>
+                {hq
+                  ? "HQ"
+                  : session.user.role === "OPERATOR"
+                    ? "Operator"
+                    : manager
+                      ? "Manager"
+                      : "Staff"}
+              </small>
             </span>
             <ChevronRight size={14} />
           </button>
@@ -362,10 +366,24 @@ export default function App() {
                 <div className="avatar">{initials(session.user.name)}</div>
                 <div>
                   <b>{session.user.name}</b>
-                  <small>{hq ? "HQ administrator" : manager ? `${session.user.branch?.name || "Branch"} manager` : "Staff requester"}</small>
+                  <small>
+                    {hq
+                      ? "HQ administrator"
+                      : session.user.role === "OPERATOR"
+                        ? "Operator"
+                        : manager
+                          ? `${session.user.zone || session.user.branch?.zone || "Zone"} manager`
+                          : "Staff requester"}
+                  </small>
                 </div>
               </div>
-              <button role="menuitem" onClick={() => { navigate("profile"); setProfileOpen(false); }}>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  navigate("profile");
+                  setProfileOpen(false);
+                }}
+              >
                 <UserCircle size={17} /> Profile details
               </button>
               <button role="menuitem" className="logout-menu" onClick={logout}>
@@ -396,11 +414,6 @@ export default function App() {
                     : "From the big picture to the details that matter."}
               </p>
             </div>
-            {page !== "new" && (
-              <button className="primary" onClick={() => navigate("new")}>
-                <Plus size={17} /> New ticket
-              </button>
-            )}
           </header>
           {notice && (
             <div className="notice" role="status">
@@ -422,82 +435,107 @@ export default function App() {
               </button>
             </div>
           )}
-          {page !== "new" && (manager || page !== "overview") && (
-            <div className="period-toolbar">
-              <div className="period-filter" ref={periodMenu}>
-                <button
-                  className="period-filter-button"
-                  aria-label="Filter reporting period"
-                  aria-haspopup="true"
-                  aria-expanded={periodOpen}
-                  title="Reporting period"
-                  onClick={() => setPeriodOpen((open) => !open)}
-                >
-                  <ListFilter size={20} />
+          {!["new", "profile", "users"].includes(page) &&
+            (manager || page !== "overview") && (
+              <div className="period-toolbar">
+                <span className="period-caption">
+                  {
+                    {
+                      today: "Today",
+                      yesterday: "Yesterday",
+                      week: "Last week",
+                      month: "This month",
+                      last: "Last month",
+                      year: "This year",
+                      all: "All time",
+                      custom: "Custom range",
+                    }[filters.preset]
+                  }
+                </span>
+                <div className="period-filter" ref={periodMenu}>
+                  <button
+                    className="period-filter-button"
+                    aria-label="Filter reporting period"
+                    aria-haspopup="true"
+                    aria-expanded={periodOpen}
+                    title="Reporting period"
+                    onClick={() => setPeriodOpen((open) => !open)}
+                  >
+                    <ListFilter size={20} />
+                  </button>
+                  {periodOpen && (
+                    <div className="period-menu">
+                      <strong>Reporting period</strong>
+                      {[
+                        ["today", "Today"],
+                        ["yesterday", "Yesterday"],
+                        ["week", "Last week"],
+                        ["month", "This month"],
+                        ["last", "Last month"],
+                        ["year", "This year"],
+                        ["all", "All time"],
+                        ["custom", "Custom range"],
+                      ].map(([value, name]) => (
+                        <button
+                          key={value}
+                          className={filters.preset === value ? "active" : ""}
+                          onClick={() => {
+                            setFilters({
+                              ...filters,
+                              preset: value,
+                              ...(value === "custom" ? {} : rangeFor(value)),
+                            });
+                            if (value !== "custom") setPeriodOpen(false);
+                          }}
+                        >
+                          {name}
+                          {filters.preset === value && <CheckCheck size={15} />}
+                        </button>
+                      ))}
+                      {filters.preset === "custom" && (
+                        <div className="period-dates">
+                          <label>
+                            From
+                            <input
+                              aria-label="Start date"
+                              type="date"
+                              value={filters.from}
+                              max={filters.to || undefined}
+                              onChange={(e) =>
+                                setFilters({ ...filters, from: e.target.value })
+                              }
+                            />
+                          </label>
+                          <label>
+                            To
+                            <input
+                              aria-label="End date"
+                              type="date"
+                              value={filters.to}
+                              min={filters.from || undefined}
+                              onChange={(e) =>
+                                setFilters({ ...filters, to: e.target.value })
+                              }
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button className="primary" onClick={() => navigate("new")}>
+                  <Plus size={17} /> New ticket
                 </button>
-                {periodOpen && (
-                  <div className="period-menu">
-                    <strong>Reporting period</strong>
-                    {[
-                      ["today", "Today"],
-                      ["yesterday", "Yesterday"],
-                      ["week", "Last week"],
-                      ["month", "This month"],
-                      ["last", "Last month"],
-                      ["year", "This year"],
-                      ["all", "All time"],
-                      ["custom", "Custom range"],
-                    ].map(([value, name]) => (
-                      <button
-                        key={value}
-                        className={filters.preset === value ? "active" : ""}
-                        onClick={() => {
-                          setFilters({
-                            ...filters,
-                            preset: value,
-                            ...(value === "custom" ? {} : rangeFor(value)),
-                          });
-                          if (value !== "custom") setPeriodOpen(false);
-                        }}
-                      >
-                        {name}
-                        {filters.preset === value && <CheckCheck size={15} />}
-                      </button>
-                    ))}
-                    {filters.preset === "custom" && (
-                      <div className="period-dates">
-                        <label>
-                          From
-                          <input
-                            aria-label="Start date"
-                            type="date"
-                            value={filters.from}
-                            max={filters.to || undefined}
-                            onChange={(e) =>
-                              setFilters({ ...filters, from: e.target.value })
-                            }
-                          />
-                        </label>
-                        <label>
-                          To
-                          <input
-                            aria-label="End date"
-                            type="date"
-                            value={filters.to}
-                            min={filters.from || undefined}
-                            onChange={(e) =>
-                              setFilters({ ...filters, to: e.target.value })
-                            }
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-            </div>
-          )}
-          {page === "new" ? (
+            )}
+          {page === "users" && manager ? (
+            <StaffSettings
+              api={api}
+              headers={headers}
+              user={session.user}
+              metadata={metadata}
+            />
+          ) : page === "new" ? (
             <TicketForm
               metadata={metadata}
               user={session.user}
@@ -529,7 +567,17 @@ export default function App() {
           ) : page === "reporting" && manager ? (
             <ReportingPanel />
           ) : (
-            <div className={`dashboard-layout ${manager && page === "overview" ? "manager-overview-layout" : "full-dashboard-layout"}`}>
+            <div
+              className={`dashboard-layout ${manager && page === "overview" ? "manager-overview-layout" : "full-dashboard-layout"}`}
+            >
+              {page === "overview" && (
+                <aside
+                  className={`scope ${manager ? "dashboard-health-panel" : "user-health-panel"}`}
+                >
+                  <SlaHealth summary={data?.summary} />
+                  <SlaHealth summary={data?.summary} resolution />
+                </aside>
+              )}
               <div className="dashboard-main">
                 {loading && !data ? (
                   <div className="loading panel" role="status">
@@ -564,9 +612,13 @@ export default function App() {
                                   </span>
                                   <ArrowUpRight size={15} />
                                 </div>
-                                <strong>{data.summary[key].toLocaleString()}</strong>
+                                <strong>
+                                  {data.summary[key].toLocaleString()}
+                                </strong>
                                 <span>{name}</span>
-                                <small>View tickets <ChevronRight size={12} /></small>
+                                <small>
+                                  View tickets <ChevronRight size={12} />
+                                </small>
                               </button>
                             ))}
                           </div>
@@ -581,7 +633,9 @@ export default function App() {
                         category === null ? (
                           <section className="system-selection">
                             <div className="breadcrumb">
-                              <button onClick={() => navigate("overview")}>Overview</button>
+                              <button onClick={() => navigate("overview")}>
+                                Overview
+                              </button>
                               <ChevronRight size={14} />
                               {metrics.find((m) => m[0] === metric)?.[1]}
                             </div>
@@ -593,9 +647,12 @@ export default function App() {
                             </div>
                             <div className="system-grid">
                               {["", ...categories].map((system, index) => {
-                                const Icon = index === 0 ? Layers3 : icons[index - 1];
+                                const Icon =
+                                  index === 0 ? Layers3 : icons[index - 1];
                                 const count = system
-                                  ? data.tickets.filter((ticket) => ticket.category === system).length
+                                  ? data.tickets.filter(
+                                      (ticket) => ticket.category === system,
+                                    ).length
                                   : data.tickets.length;
                                 return (
                                   <button
@@ -603,10 +660,18 @@ export default function App() {
                                     className="system-choice panel"
                                     onClick={() => setCategory(system)}
                                   >
-                                    <span className="system-icon"><Icon size={24} /></span>
-                                    <ArrowUpRight className="system-choice-arrow" size={18} />
+                                    <span className="system-icon">
+                                      <Icon size={24} />
+                                    </span>
+                                    <ArrowUpRight
+                                      className="system-choice-arrow"
+                                      size={18}
+                                    />
                                     <strong>{system || "All systems"}</strong>
-                                    <small>{count} {count === 1 ? "ticket" : "tickets"}</small>
+                                    <small>
+                                      {count}{" "}
+                                      {count === 1 ? "ticket" : "tickets"}
+                                    </small>
                                   </button>
                                 );
                               })}
@@ -622,13 +687,16 @@ export default function App() {
                             </button>
                             <div className="section-heading">
                               <div>
-                                <p className="eyebrow">{metrics.find((m) => m[0] === metric)?.[1]}</p>
+                                <p className="eyebrow">
+                                  {metrics.find((m) => m[0] === metric)?.[1]}
+                                </p>
                                 <h2>{category || "All systems"}</h2>
                               </div>
                             </div>
                             <TicketList
                               tickets={data.tickets.filter(
-                                (ticket) => !category || ticket.category === category,
+                                (ticket) =>
+                                  !category || ticket.category === category,
                               )}
                               open={setSelected}
                               compact
@@ -642,11 +710,6 @@ export default function App() {
                   )
                 )}
               </div>
-              {page === "overview" && (
-                <aside className={`scope ${manager ? "dashboard-health-panel" : "user-health-panel"}`}>
-                  <SlaHealth summary={data?.summary} />
-                </aside>
-              )}
             </div>
           )}
           <footer>
@@ -666,6 +729,7 @@ export default function App() {
         <TicketModal
           ticket={selected}
           manager={manager}
+          metadata={metadata}
           headers={headers}
           close={() => setSelected(null)}
           changed={load}
@@ -914,15 +978,13 @@ function MyDashboard({ tickets, summary, open, onFilter }) {
   const active = tickets.filter(
     (t) => !["RESOLVED", "CLOSED"].includes(t.status),
   );
-  const stages = ["Submitted", "Acknowledged", "In progress", "Resolved"];
+  const stages = ["In progress", "Resolved", "Closed"];
   const stageFor = (status) =>
     ({
-      NEW: 0,
-      ACKNOWLEDGED: 1,
-      IN_PROGRESS: 2,
-      WAITING: 2,
-      RESOLVED: 3,
-      CLOSED: 3,
+      IN_PROGRESS: 0,
+      WAITING: 0,
+      RESOLVED: 1,
+      CLOSED: 2,
     })[status] ?? 0;
   return (
     <>
@@ -956,7 +1018,10 @@ function MyDashboard({ tickets, summary, open, onFilter }) {
           <div className="section-heading">
             <div>
               <p className="eyebrow">WHAT’S HAPPENING NOW</p>
-              <button className="section-title-button" onClick={() => onFilter("unresolved")}>
+              <button
+                className="section-title-button"
+                onClick={() => onFilter("unresolved")}
+              >
                 <h2>Track your active requests</h2>
                 <ArrowUpRight size={15} />
               </button>
@@ -1028,9 +1093,12 @@ function ReportingPanel() {
       <p className="eyebrow">AI-ASSISTED REPORTING</p>
       <h2>Generated operational reports are coming soon.</h2>
       <p className="muted">
-        This area is reserved for role-aware summaries, trends, and downloadable reports generated from the selected reporting period.
+        This area is reserved for role-aware summaries, trends, and downloadable
+        reports generated from the selected reporting period.
       </p>
-      <span className="live-chip"><i /> PLANNED</span>
+      <span className="live-chip">
+        <i /> PLANNED
+      </span>
     </section>
   );
 }
@@ -1043,7 +1111,9 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
       <div className="dashboard-scope-head">
         <div>
           <h2>Operational scope</h2>
-          <p className="muted">Choose the zones and branches shown in the dashboard.</p>
+          <p className="muted">
+            Choose the zones and branches shown in the dashboard.
+          </p>
         </div>
         <button
           className="reset-scope"
@@ -1054,9 +1124,11 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
       </div>
       <div className="dashboard-scope-grid">
         <div className="dashboard-scope-column">
-          <div className="scope-label"><MapPin size={15} /> ZONES</div>
+          <div className="scope-label">
+            <MapPin size={15} /> ZONES
+          </div>
           <div className="zone-list">
-            {["", "West MY", "East MY"].map((zone) => (
+            {["", ...(metadata?.zones || [])].map((zone) => (
               <button
                 key={zone}
                 className={filters.zone === zone ? "active" : ""}
@@ -1071,14 +1143,16 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
           </div>
         </div>
         <div className="dashboard-scope-column">
-          <div className="scope-label"><Building2 size={15} /> BRANCHES / STATES</div>
+          <div className="scope-label">
+            <Building2 size={15} /> BRANCHES / STATES
+          </div>
           <div className="branch-list">
             <button
               className={!filters.branchId ? "active" : ""}
               aria-pressed={!filters.branchId}
               onClick={() => setFilters({ ...filters, branchId: "" })}
             >
-              {hq ? "All branches" : "My branch"}
+              {hq ? "All branches" : "Accessible branches"}
               <span>{branches.length}</span>
             </button>
             {branches.map((branch) => (
@@ -1101,44 +1175,45 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
     </section>
   );
 }
-function SlaHealth({ summary }) {
-  const rate = summary?.total
-    ? Math.round((summary.within / summary.total) * 100)
-    : 0;
+function SlaHealth({ summary, resolution = false }) {
+  const good = resolution ? summary?.resolved : summary?.within;
+  const bad = resolution ? summary?.unresolved : summary?.missed;
+  const rate = summary?.total ? Math.round((good / summary.total) * 100) : 0;
   return (
-      <section className="panel sla-panel">
-        <div className="panel-heading">
-          <h2>SLA health</h2>
-          <ShieldCheck size={18} />
+    <section className="panel sla-panel">
+      <div className="panel-heading">
+        <h2>{resolution ? "Resolution health" : "SLA health"}</h2>
+        <ShieldCheck size={18} />
+      </div>
+      <div className="sla-ring" style={{ "--progress": `${rate}%` }}>
+        <div>
+          <strong>{summary?.total ? `${rate}%` : "—"}</strong>
+          <small>{resolution ? "RESOLVED" : "WITHIN SLA"}</small>
         </div>
-        <div className="sla-ring" style={{ "--progress": `${rate}%` }}>
-          <div>
-            <strong>{summary?.total ? `${rate}%` : "—"}</strong>
-            <small>WITHIN SLA</small>
-          </div>
-        </div>
-        <p>
-          {summary?.total
-            ? `${summary.within} of ${summary.total} tickets on time`
-            : "No tickets in this scope"}
-        </p>
-        <div className="sla-key">
-          <span>
-            <i className="lavender-bg" /> Within SLA
-          </span>
-          <b>{summary?.within ?? "—"}</b>
-        </div>
-        <div className="sla-key">
-          <span>
-            <i className="rose-bg" /> Missed SLA
-          </span>
-          <b>{summary?.missed ?? "—"}</b>
-        </div>
-        <small className="sla-explainer">
-          Resolution SLA. Open tickets are measured against now; completed
-          tickets against their resolution time.
-        </small>
-      </section>
+      </div>
+      <p>
+        {summary?.total
+          ? `${good} of ${summary.total} tickets ${resolution ? "resolved" : "on time"}`
+          : "No tickets in this scope"}
+      </p>
+      <div className="sla-key">
+        <span>
+          <i className="lavender-bg" /> {resolution ? "Resolved" : "Within SLA"}
+        </span>
+        <b>{good ?? "—"}</b>
+      </div>
+      <div className="sla-key">
+        <span>
+          <i className="rose-bg" /> {resolution ? "Unresolved" : "Missed SLA"}
+        </span>
+        <b>{bad ?? "—"}</b>
+      </div>
+      <small className="sla-explainer">
+        {resolution
+          ? "Resolved and closed tickets ÷ total tickets in the selected period and scope."
+          : "Resolution SLA. Waiting pauses the timer; completed tickets use their resolution time."}
+      </small>
+    </section>
   );
 }
 function TicketList({ tickets, open, compact }) {
@@ -1269,6 +1344,7 @@ function TicketList({ tickets, open, compact }) {
 }
 function TicketForm({ metadata, user, headers, done, cancel }) {
   const own = metadata?.branches.find((b) => b.id === user.branchId);
+  const locked = user.role === "STAFF";
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -1318,6 +1394,11 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
             {error}
           </div>
         )}
+        {locked && !own && (
+          <div className="error">
+            Your account needs an assigned branch. Contact your manager.
+          </div>
+        )}
         <label>
           Ticket title
           <input
@@ -1353,6 +1434,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
             <select
               required
               aria-label="Zone"
+              disabled={locked}
               value={effectiveZone}
               onChange={(e) =>
                 setForm({ ...form, zone: e.target.value, branchId: "" })
@@ -1368,7 +1450,12 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
           </label>
           <label>
             Branch / state
-            <select aria-label="Branch / state" required {...field("branchId")}>
+            <select
+              aria-label="Branch / state"
+              disabled={locked}
+              required
+              {...field("branchId")}
+            >
               <option value="" disabled>
                 Select branch
               </option>
@@ -1395,7 +1482,10 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
           <button type="button" className="secondary" onClick={cancel}>
             Cancel
           </button>
-          <button className="primary" disabled={busy || !metadata}>
+          <button
+            className="primary"
+            disabled={busy || !metadata || (locked && !own)}
+          >
             {busy ? "Submitting…" : "Submit service ticket"}
             <ArrowUpRight size={17} />
           </button>
@@ -1434,9 +1524,12 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     </div>
   );
 }
-function TicketModal({ ticket, manager, headers, close, changed }) {
+function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
   const [current, setCurrent] = useState(ticket),
     [status, setStatus] = useState(ticket.status),
+    [assignment, setAssignment] = useState(ticket.assigneeId || ""),
+    [branch, setBranch] = useState(ticket.branchId),
+    [priority, setPriority] = useState(ticket.priority),
     [comment, setComment] = useState(""),
     [internal, setInternal] = useState(false),
     [busy, setBusy] = useState(false),
@@ -1456,12 +1549,16 @@ function TicketModal({ ticket, manager, headers, close, changed }) {
     setBusy(true);
     setError("");
     try {
-      if (type === "status")
+      if (["status", "assignment", "escalate"].includes(type))
         setCurrent(
           (
             await api.patch(
               `/api/tickets/${current.id}`,
-              { status },
+              type === "status"
+                ? { status }
+                : type === "escalate"
+                  ? { escalateToHq: true }
+                  : { assigneeId: assignment, priority, branchId: branch },
               { headers },
             )
           ).data,
@@ -1528,7 +1625,7 @@ function TicketModal({ ticket, manager, headers, close, changed }) {
           {error}
         </div>
       )}
-      {manager && (
+      {(manager || !["RESOLVED", "CLOSED"].includes(current.status)) && (
         <form
           className="workflow-form"
           onSubmit={(e) => {
@@ -1539,11 +1636,13 @@ function TicketModal({ ticket, manager, headers, close, changed }) {
           <label>
             Update workflow
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {label(s)}
-                </option>
-              ))}
+              {statuses
+                .filter((s) => manager || s !== "CLOSED")
+                .map((s) => (
+                  <option key={s} value={s}>
+                    {label(s)}
+                  </option>
+                ))}
             </select>
           </label>
           <button
@@ -1552,6 +1651,85 @@ function TicketModal({ ticket, manager, headers, close, changed }) {
           >
             Save status
           </button>
+        </form>
+      )}
+      {current.waitingSince && (
+        <p className="notice">
+          SLA paused since {dateText(current.waitingSince)}.
+        </p>
+      )}
+      {current.escalatedAt && (
+        <p className="notice">
+          Assigned to HQ · {dateText(current.escalatedAt)}
+        </p>
+      )}
+      {manager && (
+        <form
+          className="assignment-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save("assignment");
+          }}
+        >
+          <div className="two">
+            <label>
+              Zone / branch
+              <select
+                value={branch}
+                onChange={(e) => {
+                  setBranch(e.target.value);
+                  setAssignment("");
+                }}
+              >
+                {metadata?.branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.zone} · {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Criticality
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                {priorities.map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label>
+            Assign technician
+            <select
+              value={assignment}
+              onChange={(e) => setAssignment(e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {metadata?.assignees
+                ?.filter((u) => u.role === "HQ_ADMIN" || u.branchId === branch)
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                    {u.role === "HQ_ADMIN" ? " (HQ)" : ""}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <div className="staff-actions">
+            <button className="primary" disabled={busy}>
+              Save assignment
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => save("escalate")}
+            >
+              Assign to HQ
+            </button>
+          </div>
         </form>
       )}
       <h3>Activity & updates</h3>
