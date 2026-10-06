@@ -271,7 +271,6 @@ export default function App() {
   if (!session)
     return (
       <Login
-        report={() => navigate("reporting")}
         onLogin={(s) => {
           localStorage.setItem("ticketSession", JSON.stringify(s));
           setFilters(initialFilters());
@@ -741,7 +740,7 @@ export default function App() {
     </div>
   );
 }
-function Login({ onLogin, report }) {
+function Login({ onLogin }) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
@@ -825,7 +824,6 @@ function Login({ onLogin, report }) {
             {busy ? "Signing in…" : "Enter workspace"}
             <ArrowUpRight size={18} />
           </button>
-          <button type="button" className="secondary public-report-link" onClick={report}><BarChart3 size={17}/> View public report</button>
           <p className="login-help">
             Your role connects you to the right sites and services. Contact
             your administrator for access.
