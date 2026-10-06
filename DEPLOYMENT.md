@@ -68,26 +68,35 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f backend/prisma/upgrades/20261006_operator_staff.sql
 ```
 
-After deployment, sign in as HQ, open **Settings · Users → Operator credentials**,
-and create an operator's company name, account holder, email and initial
-password. Operators use the normal login page and can add staff individually
-or via **Bulk add staff**. No shared default operator password is seeded.
-Passwords are bcrypt hashes in `User`; `Operator` references that login account.
-Existing staff ownership can remain empty for company staff. HQ can select an
-operator when adding staff manually or importing CSV accounts.
+Before deployment, set `OPERATOR_EMAIL` and `OPERATOR_PASSWORD` in Render.
+Use a dedicated email not already assigned to another role and a unique password
+of at least twelve characters and at most 72 UTF-8 bytes. Optionally set
+`OPERATOR_NAME` and `OPERATOR_COMPANY`. Docker startup runs the seed to create
+this separate operator account; reseeding preserves its password and company
+name. There is no default operator password. For a running environment, run
+`cd backend && node seed.js` after setting the variables.
 
-Download the template in Settings, populate unique passwords (at least twelve
-characters, at most 72 UTF-8 bytes), use STAFF / SU or BRANCH_MANAGER / SM, and
-use the listed branch codes. The optional zone column must match the branch.
-Uploads accept UTF-8 CSV under 500 KB with up to 500 staff rows. Use **Validate &
-preview** before **Add staff**. Invalid roles, branches, zones, duplicate emails,
-and existing accounts reject the entire batch; no accounts are overwritten.
-Passwords are never returned in previews or staff directory responses. Staff
-can change their initial password under Profile after signing in.
+On the login page choose **Operator control**, then open **Access control** to
+create HQ, manager, and technician credentials or edit their role/zone/branch.
+HQ and manager accounts retain ticket operations and reporting, but cannot
+create, edit, or bulk-import credentials. The API enforces this rule from the
+database role, irrespective of client controls or JWT role claims.
 
-Managers can manage staff and tickets in their assigned zone; a manager linked
-to an operator is additionally restricted to that operator's staff/tickets.
-Operators manage their own staff and tickets; HQ retains system-wide access.
+Download the CSV template in Access control. Use HQ_ADMIN / HQ,
+BRANCH_MANAGER / SM, or STAFF / SU. HQ rows leave branch and zone empty; other
+rows use a valid branch code and matching zone. Uploads accept UTF-8 CSV under
+500 KB with up to 500 accounts. Use **Validate & preview** before importing.
+Invalid roles, branches, zones, duplicate emails, and existing accounts reject
+the whole batch. Passwords are hashed and never returned in previews or the
+directory. Users can change their own password under Profile.
+
+Operators have platform-wide ticket and credential oversight, including
+legacy users without operator ownership. Managers retain their assigned zone
+and existing ownership restrictions. HQ retains company-wide ticket operations.
+The operator dashboard checks `/ready` for database connectivity. Integration
+and billing statuses remain **Not configured / Not linked** until actual
+providers are implemented; payment balances and provider health are not inferred.
+
 Technicians see tickets they raised or are assigned and submit only for their
 account's branch. Technicians may resume, wait or resolve active tickets;
 managers close resolved tickets or escalate to HQ. Waiting pauses the SLA

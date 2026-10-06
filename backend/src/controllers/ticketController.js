@@ -59,7 +59,7 @@ exports.metadata = handle(async (req, res) => {
               { role: "HQ_ADMIN" },
               {
                 role: "STAFF",
-                ...(req.user.operatorId || req.user.ownedOperator
+                ...(req.user.role !== "OPERATOR" && (req.user.operatorId || req.user.ownedOperator)
                   ? {
                       operatorId:
                         req.user.operatorId || req.user.ownedOperator.id,

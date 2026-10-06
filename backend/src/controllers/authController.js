@@ -29,6 +29,9 @@ exports.login = async (req, res, next) => {
     });
     if (!user || !(await bcrypt.compare(password, user.passwordHash)))
       return res.status(401).json({ message: "Invalid email or password" });
+    if ((req.body.portal === "operator" && user.role !== "OPERATOR") ||
+        (req.body.portal === "operations" && user.role === "OPERATOR"))
+      return res.status(403).json({ message: "Use the login portal for your account role" });
     res.json({ token: tokenFor(user), user: publicUser(user) });
   } catch (error) {
     next(error);

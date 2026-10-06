@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import StaffSettings from "./components/StaffSettings";
+import OperatorControlCenter from "./components/OperatorControlCenter";
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || "" });
 const categories = [
@@ -271,6 +272,7 @@ export default function App() {
       />
     );
   const hq = session.user.role === "HQ_ADMIN",
+    operator = session.user.role === "OPERATOR",
     manager = session.user.role !== "STAFF";
   const drill = (key) => {
     setMetric(key);
@@ -279,12 +281,12 @@ export default function App() {
   };
   const title =
     {
-      overview: manager ? "Operations overview" : "My service desk",
+      overview: operator ? "System control" : manager ? "Operations overview" : "My service desk",
       tickets: manager ? "Ticket register" : "My ticket",
       new: "Raise a service ticket",
       profile: "Profile details",
       reporting: "Reporting",
-      users: "Settings · Users",
+      users: "Access control",
     }[page] || "Operations overview";
   return (
     <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -317,9 +319,9 @@ export default function App() {
             ["tickets", Ticket, manager ? "Ticket register" : "My ticket"],
             ["new", Plus, "Raise a ticket"],
             ["reporting", BarChart3, "Reporting"],
-            ["users", Settings, "Settings · Users"],
+            ["users", Settings, "Access control"],
           ]
-            .filter(([key]) => manager || !["reporting", "users"].includes(key))
+            .filter(([key]) => key === "users" ? operator : manager || key !== "reporting")
             .map(([key, Icon, name]) => (
               <button
                 key={key}
@@ -514,7 +516,7 @@ export default function App() {
                 </button>
               </div>
             )}
-          {page === "users" && manager ? (
+          {page === "users" && operator ? (
             <StaffSettings
               api={api}
               headers={headers}
@@ -556,16 +558,6 @@ export default function App() {
             <div
               className={`dashboard-layout ${manager && page === "overview" ? "manager-overview-layout" : "full-dashboard-layout"}`}
             >
-              {manager && page === "overview" && (
-                <aside className="dashboard-scope-sidebar">
-                  <ScopePanel
-                    metadata={metadata}
-                    filters={filters}
-                    setFilters={setFilters}
-                    hq={hq}
-                  />
-                </aside>
-              )}
               <div className="dashboard-main">
                 {loading && !data ? (
                   <div className="loading panel" role="status">
@@ -593,6 +585,7 @@ export default function App() {
                         </>
                       ) : manager && page === "overview" ? (
                         <>
+                          {operator && <OperatorControlCenter api={api} headers={headers} summary={data.summary} manage={() => navigate("users")} />}
                           <div className="metric-cards">
                             {metrics.map(([key, name, Icon, tone]) => (
                               <button
@@ -702,6 +695,16 @@ export default function App() {
                   )
                 )}
               </div>
+              {manager && page === "overview" && (
+                <aside className="dashboard-scope-sidebar">
+                  <ScopePanel
+                    metadata={metadata}
+                    filters={filters}
+                    setFilters={setFilters}
+                    hq={hq || operator}
+                  />
+                </aside>
+              )}
             </div>
           )}
           <footer>
@@ -731,6 +734,7 @@ export default function App() {
   );
 }
 function Login({ onLogin }) {
+  const [operatorLogin, setOperatorLogin] = useState(false);
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
@@ -740,7 +744,7 @@ function Login({ onLogin }) {
     setBusy(true);
     setError("");
     try {
-      onLogin((await api.post("/api/auth/login", { email, password })).data);
+      onLogin((await api.post("/api/auth/login", { email, password, portal: operatorLogin ? "operator" : "operations" })).data);
     } catch (e) {
       setError(
         e.response?.data?.message || "Unable to sign in. Please try again.",
@@ -781,8 +785,12 @@ function Login({ onLogin }) {
           <span className="login-badge">
             <ShieldCheck size={16} /> SECURE WORKSPACE
           </span>
-          <h2>Welcome back.</h2>
-          <p className="muted">Sign in to your operations workspace.</p>
+          <div className="login-mode" aria-label="Login portal">
+            <button type="button" className={operatorLogin ? "secondary" : "primary"} aria-pressed={!operatorLogin} disabled={busy} onClick={() => { setOperatorLogin(false); setError(""); }}>Operations</button>
+            <button type="button" className={operatorLogin ? "primary" : "secondary"} aria-pressed={operatorLogin} disabled={busy} onClick={() => { setOperatorLogin(true); setError(""); }}>Operator control</button>
+          </div>
+          <h2>{operatorLogin ? "System control login." : "Welcome back."}</h2>
+          <p className="muted">{operatorLogin ? "Sign in with your dedicated operator account." : "Sign in to your operations workspace."}</p>
           {error && (
             <div className="error" role="alert">
               {error}

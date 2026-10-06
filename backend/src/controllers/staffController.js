@@ -19,23 +19,13 @@ const handle = (fn) => async (req, res, next) => {
     next(e);
   }
 };
+function requireOperator(user) {
+  if (user.role !== "OPERATOR")
+    throw Object.assign(new Error("Credential management is restricted to the operator account"), { status: 403 });
+}
 function staffScope(user) {
-  if (user.role === "HQ_ADMIN") return {};
-  if (user.role === "OPERATOR")
-    return {
-      operatorId: user.ownedOperator?.id || "__NO_OPERATOR__",
-      role: { in: ["STAFF", "BRANCH_MANAGER"] },
-    };
-  if (user.role === "BRANCH_MANAGER")
-    return {
-      role: { in: ["STAFF", "BRANCH_MANAGER"] },
-      branch: {
-        zone:
-          user.zone || (user.branch && zoneOf(user.branch)) || "__NO_ZONE__",
-      },
-      ...(user.operatorId ? { operatorId: user.operatorId } : {}),
-    };
-  return { id: "__NO_ACCESS__" };
+  requireOperator(user);
+  return { role: { in: ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"] } };
 }
 function validateIdentity(row, passwordRequired = true) {
   const name = String(row.name || "").trim();
@@ -58,13 +48,18 @@ function validateIdentity(row, passwordRequired = true) {
   return { name, email };
 }
 async function validateStaff(row, actor, branches) {
+  requireOperator(actor);
   const identity = validateIdentity(row);
   const inputRole = String(row.role || "STAFF")
     .trim()
     .toUpperCase();
-  const role = { SU: "STAFF", SM: "BRANCH_MANAGER" }[inputRole] || inputRole;
-  if (!["STAFF", "BRANCH_MANAGER"].includes(role))
-    fail("Staff role must be STAFF or BRANCH_MANAGER");
+  const role = { SU: "STAFF", SM: "BRANCH_MANAGER", HQ: "HQ_ADMIN" }[inputRole] || inputRole;
+  if (!["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"].includes(role))
+    fail("Role must be STAFF, BRANCH_MANAGER or HQ_ADMIN");
+  const operatorId = actor.ownedOperator?.id;
+  if (!operatorId) fail("Operator account is not configured");
+  if (role === "HQ_ADMIN")
+    return { ...identity, role, branchId: null, zone: null, operatorId };
   const branch = branches.find(
     (b) => b.code === String(row.branch_code || "").trim(),
   );
@@ -72,15 +67,6 @@ async function validateStaff(row, actor, branches) {
   const zone = String(row.zone || zoneOf(branch)).trim();
   if (!zones.includes(zone) || zone !== zoneOf(branch))
     fail("Zone must match the branch");
-  if (
-    actor.role === "BRANCH_MANAGER" &&
-    zone !== (actor.zone || zoneOf(actor.branch))
-  )
-    fail("Branch is outside your assigned zone");
-  const operatorId =
-    actor.role === "OPERATOR" ? actor.ownedOperator?.id : actor.operatorId;
-  if (actor.role === "OPERATOR" && !operatorId)
-    fail("Operator account is not configured");
   return {
     ...identity,
     role,
@@ -99,19 +85,14 @@ exports.list = handle(async (req, res) => {
   );
 });
 exports.create = handle(async (req, res) => {
+  requireOperator(req.user);
   const branches = await prisma.branch.findMany();
   const data = await validateStaff(req.body, req.user, branches);
-  if (req.user.role === "HQ_ADMIN" && req.body.operatorId) {
-    const operator = await prisma.operator.findUnique({
-      where: { id: req.body.operatorId },
-    });
-    if (!operator) fail("Unknown operator");
-    data.operatorId = operator.id;
-  }
   data.passwordHash = await bcrypt.hash(req.body.password, 12);
   res.status(201).json(await prisma.user.create({ data, select }));
 });
 exports.update = handle(async (req, res) => {
+  requireOperator(req.user);
   if (req.params.id === req.user.id)
     return res
       .status(403)
@@ -124,8 +105,8 @@ exports.update = handle(async (req, res) => {
   });
   if (!target)
     return res.status(404).json({ message: "Staff member not found" });
-  if (!["STAFF", "BRANCH_MANAGER"].includes(target.role))
-    fail("Operator and HQ roles are managed separately");
+  if (!["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"].includes(target.role))
+    fail("This credential cannot be managed here");
   const branches = await prisma.branch.findMany();
   const oldBranch = branches.find((b) => b.id === target.branchId);
   const row = {
@@ -138,7 +119,7 @@ exports.update = handle(async (req, res) => {
     password: "validation-placeholder",
   };
   const data = await validateStaff(row, req.user, branches);
-  // Keep existing ownership. A zone manager cannot transfer staff to another operator.
+  // Preserve ownership while changing role or branch access.
   data.operatorId = target.operatorId;
   const updated = await prisma.user.updateMany({
     where: { id: target.id, ...staffScope(req.user) },
@@ -151,15 +132,8 @@ exports.update = handle(async (req, res) => {
   res.json(await prisma.user.findUnique({ where: { id: target.id }, select }));
 });
 exports.importCsv = handle(async (req, res) => {
+  requireOperator(req.user);
   const rows = parseStaffCsv(req.body.csv);
-  let importOperatorId;
-  if (req.user.role === "HQ_ADMIN" && req.body.operatorId) {
-    const operator = await prisma.operator.findUnique({
-      where: { id: req.body.operatorId },
-    });
-    if (!operator) fail("Unknown operator");
-    importOperatorId = operator.id;
-  }
   const branches = await prisma.branch.findMany();
   const emails = new Set();
   const errors = [],
@@ -167,7 +141,6 @@ exports.importCsv = handle(async (req, res) => {
   for (let i = 0; i < rows.length; i++) {
     try {
       const data = await validateStaff(rows[i], req.user, branches);
-      if (importOperatorId) data.operatorId = importOperatorId;
       if (emails.has(data.email)) fail("Duplicate email in CSV");
       emails.add(data.email);
       valid.push({ data, password: rows[i].password, row: i + 2 });
@@ -186,7 +159,7 @@ exports.importCsv = handle(async (req, res) => {
   if (errors.length)
     return res
       .status(400)
-      .json({ message: "Fix the CSV errors; no staff were added", errors });
+      .json({ message: "Fix the CSV errors; no credentials were added", errors });
   if (req.body.preview === true)
     return res.json({
       count: valid.length,
@@ -204,35 +177,7 @@ exports.importCsv = handle(async (req, res) => {
     .status(201)
     .json({
       count: result.count,
-      message: `${result.count} staff accounts created`,
+      message: `${result.count} credentials created`,
     });
-});
-exports.operators = handle(async (req, res) => {
-  res.json(
-    await prisma.operator.findMany({
-      select: {
-        id: true,
-        name: true,
-        user: { select },
-        _count: { select: { staff: true } },
-      },
-      orderBy: { name: "asc" },
-    }),
-  );
-});
-exports.createOperator = handle(async (req, res) => {
-  const identity = validateIdentity(req.body);
-  const operatorName = String(req.body.operatorName || "").trim();
-  if (operatorName.length < 2 || operatorName.length > 120)
-    fail("Operator name must contain 2–120 characters");
-  const passwordHash = await bcrypt.hash(req.body.password, 12);
-  const operator = await prisma.operator.create({
-    data: {
-      name: operatorName,
-      user: { create: { ...identity, passwordHash, role: "OPERATOR" } },
-    },
-    select: { id: true, name: true, user: { select } },
-  });
-  res.status(201).json(operator);
 });
 module.exports.staffScope = staffScope;

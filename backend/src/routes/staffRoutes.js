@@ -5,12 +5,12 @@ const c = require("../controllers/staffController");
 const router = express.Router();
 router.use(auth);
 router.use((req, res, next) =>
-  ["HQ_ADMIN", "BRANCH_MANAGER", "OPERATOR"].includes(req.user.role)
+  req.user.role === "OPERATOR"
     ? next()
     : res
         .status(403)
         .json({
-          message: "Staff management requires a manager or operator account",
+          message: "Credential management is restricted to the operator account",
         }),
 );
 const importLimit = rateLimit({
@@ -22,18 +22,5 @@ const importLimit = rateLimit({
 router.get("/", c.list);
 router.post("/", importLimit, c.create);
 router.post("/import", importLimit, c.importCsv);
-router.get(
-  "/operators",
-  (req, res, next) =>
-    req.user.role === "HQ_ADMIN" ? next() : res.sendStatus(403),
-  c.operators,
-);
-router.post(
-  "/operators",
-  importLimit,
-  (req, res, next) =>
-    req.user.role === "HQ_ADMIN" ? next() : res.sendStatus(403),
-  c.createOperator,
-);
 router.patch("/:id", c.update);
 module.exports = router;

@@ -45,6 +45,32 @@ async function main() {
     ),
   );
   const branches = allBranches.slice(0, 3);
+  // Bootstrap a dedicated system-control account; never reset its password on redeploy.
+  if (process.env.OPERATOR_EMAIL || process.env.OPERATOR_PASSWORD) {
+    const email = String(process.env.OPERATOR_EMAIL || "").trim().toLowerCase();
+    const password = process.env.OPERATOR_PASSWORD || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
+      throw new Error("Set a valid OPERATOR_EMAIL for operator bootstrap");
+    if (password.length < 12 || Buffer.byteLength(password, "utf8") > 72)
+      throw new Error("OPERATOR_PASSWORD must contain at least 12 characters and at most 72 UTF-8 bytes");
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing && existing.role !== "OPERATOR")
+      throw new Error("OPERATOR_EMAIL already belongs to a non-operator account; use a dedicated email");
+    const operatorUser = existing || await prisma.user.create({
+      data: {
+        email,
+        name: process.env.OPERATOR_NAME || "Platform Operator",
+        role: "OPERATOR",
+        passwordHash: await bcrypt.hash(password, 12),
+      },
+    });
+    await prisma.operator.upsert({
+      where: { userId: operatorUser.id },
+      update: {},
+      create: { name: process.env.OPERATOR_COMPANY || "EngineDesk Operations", userId: operatorUser.id },
+    });
+  }
+
   await prisma.user.upsert({
     where: { email: "hq@test.com" },
     update: {},

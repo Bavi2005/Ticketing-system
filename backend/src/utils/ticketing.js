@@ -24,7 +24,7 @@ const missed = (t, now = new Date()) =>
       : t.waitingSince || now,
   ) > new Date(t.resolutionDueAt);
 const scope = (user) =>
-  user.role === "HQ_ADMIN"
+  ["HQ_ADMIN", "OPERATOR"].includes(user.role)
     ? {}
     : user.role === "STAFF"
       ? {
@@ -42,18 +42,7 @@ const scope = (user) =>
               ? { requester: { operatorId: user.operatorId } }
               : {}),
           }
-        : user.role === "OPERATOR"
-          ? {
-              OR: [
-                {
-                  requester: {
-                    operatorId: user.ownedOperator?.id || "__NO_OPERATOR__",
-                  },
-                },
-                { requesterId: user.id || "__NO_USER__" },
-              ],
-            }
-          : { id: "__NO_ACCESS__" };
+        : { id: "__NO_ACCESS__" };
 const fail = (message) => {
   throw Object.assign(new Error(message), { status: 400 });
 };

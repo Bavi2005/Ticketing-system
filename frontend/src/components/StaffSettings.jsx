@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Building2, Download, Upload, Users } from "lucide-react";
+import { ShieldCheck, Download, Upload, Users } from "lucide-react";
 const blank = {
   name: "",
   email: "",
@@ -7,19 +7,11 @@ const blank = {
   role: "STAFF",
   branch_code: "",
   zone: "",
-  operatorId: "",
 };
 export default function StaffSettings({ api, headers, user, metadata }) {
-  const [staff, setStaff] = useState([]),
-    [operators, setOperators] = useState([]);
+  const [staff, setStaff] = useState([]);
   const [form, setForm] = useState(blank),
     [editing, setEditing] = useState(null);
-  const [operator, setOperator] = useState({
-    operatorName: "",
-    name: "",
-    email: "",
-    password: "",
-  });
   const [csv, setCsv] = useState(""),
     [filename, setFilename] = useState(""),
     [preview, setPreview] = useState(null);
@@ -31,18 +23,12 @@ export default function StaffSettings({ api, headers, user, metadata }) {
   const load = useCallback(async () => {
     const config = { headers: { Authorization: token } };
     try {
-      const results = await Promise.all([
-        api.get("/api/staff", config),
-        ...(user.role === "HQ_ADMIN"
-          ? [api.get("/api/staff/operators", config)]
-          : []),
-      ]);
-      setStaff(results[0].data);
-      if (results[1]) setOperators(results[1].data);
+      const { data } = await api.get("/api/staff", config);
+      setStaff(data);
     } catch (e) {
       setError(e.response?.data?.message || "Unable to load staff");
     }
-  }, [api, token, user.role]);
+  }, [api, token]);
   // Fetch staff when the authenticated account changes.
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect
@@ -70,6 +56,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
       ...f,
       [key]: value,
       ...(branch ? { zone: branch.zone } : {}),
+      ...(key === "role" && value === "HQ_ADMIN" ? { zone: "", branch_code: "" } : {}),
     }));
   };
   const submitStaff = (e) => {
@@ -87,7 +74,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
       await (editing
         ? api.patch(`/api/staff/${editing}`, payload, { headers })
         : api.post("/api/staff", payload, { headers }));
-      setNotice(editing ? "Staff access updated." : "Staff account created.");
+      setNotice(editing ? "Credential access updated." : "Credential created.");
       setForm(blank);
       setEditing(null);
       await load();
@@ -95,7 +82,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
   };
   const downloadTemplate = () => {
     const branch = branches[0];
-    const content = `name,email,password,role,branch_code,zone\r\nExample Staff,staff@example.com,ReplaceWithUniquePassword,STAFF,${branch?.code || "BR1"},${branch?.zone || "West MY"}\r\n`;
+    const content = `name,email,password,role,branch_code,zone\r\nHQ Lead,hq@example.com,ReplaceWithUniquePassword,HQ_ADMIN,,\r\nExample Staff,staff@example.com,ReplaceWithUniquePassword,STAFF,${branch?.code || "BR1"},${branch?.zone || "West MY"}\r\n`;
     const url = URL.createObjectURL(
       new Blob([content], { type: "text/csv;charset=utf-8" }),
     );
@@ -129,7 +116,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
     run(async () => {
       const { data } = await api.post(
         "/api/staff/import",
-        { csv, preview: previewOnly, operatorId: form.operatorId || undefined },
+        { csv, preview: previewOnly },
         { headers },
       );
       if (previewOnly) setPreview(data);
@@ -141,8 +128,18 @@ export default function StaffSettings({ api, headers, user, metadata }) {
         await load();
       }
     });
+  if (user.role !== "OPERATOR") return null;
   return (
     <div className="staff-settings page-enter">
+      <section className="credential-hero panel">
+        <span className="operator-kicker"><ShieldCheck size={15}/> OPERATOR ACCESS CONTROL</span>
+        <h2>Identity & access command centre</h2>
+        <p>Create and manage every HQ, branch manager, and technician login.</p>
+        <div className="credential-summary">
+          <span><strong>{staff.length}</strong>Managed accounts</span>
+          {[["HQ_ADMIN", "HQ admins"], ["BRANCH_MANAGER", "Managers"], ["STAFF", "Technicians"]].map(([role, name]) => <span key={role}><strong>{staff.filter((item) => item.role === role).length}</strong>{name}</span>)}
+        </div>
+      </section>
       {error && (
         <div className="error" role="alert">
           {error}
@@ -162,104 +159,12 @@ export default function StaffSettings({ api, headers, user, metadata }) {
           {notice}
         </div>
       )}
-      {user.role === "HQ_ADMIN" && (
-        <section className="panel operator-panel">
-          <div className="panel-heading">
-            <h2>
-              <Building2 size={20} /> Operator credentials
-            </h2>
-          </div>
-          <p className="muted">
-            Create an operator login to manage its staff accounts and bulk
-            imports.
-          </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              run(async () => {
-                await api.post("/api/staff/operators", operator, { headers });
-                setOperator({
-                  operatorName: "",
-                  name: "",
-                  email: "",
-                  password: "",
-                });
-                setNotice("Operator login created.");
-                await load();
-              });
-            }}
-          >
-            <div className="two">
-              <label>
-                Operator / company name
-                <input
-                  required
-                  maxLength={120}
-                  value={operator.operatorName}
-                  onChange={(e) =>
-                    setOperator({ ...operator, operatorName: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Account holder name
-                <input
-                  required
-                  minLength={2}
-                  maxLength={120}
-                  value={operator.name}
-                  onChange={(e) =>
-                    setOperator({ ...operator, name: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Login email
-                <input
-                  type="email"
-                  required
-                  autoComplete="off"
-                  value={operator.email}
-                  onChange={(e) =>
-                    setOperator({ ...operator, email: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Initial password
-                <input
-                  type="password"
-                  required
-                  minLength={12}
-                  autoComplete="new-password"
-                  value={operator.password}
-                  onChange={(e) =>
-                    setOperator({ ...operator, password: e.target.value })
-                  }
-                />
-              </label>
-            </div>
-            <button className="primary" disabled={busy}>
-              Create operator
-            </button>
-          </form>
-          <div className="operator-list">
-            {operators.map((o) => (
-              <article key={o.id}>
-                <b>{o.name}</b>
-                <span>{o.user.email}</span>
-                <small>{o._count.staff} staff</small>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
       <div className="staff-management-grid">
         <section className="panel">
           <h2>
-            <Users size={20} /> {editing ? "Edit staff access" : "Add staff"}
+            <Users size={20} /> {editing ? "Edit credential access" : "Create credentials"}
           </h2>
-          <p className="muted">Role, zone and branch determine staff access.</p>
+          <p className="muted">Only the operator can issue and change account access.</p>
           <form onSubmit={submitStaff}>
             <label>
               Name
@@ -303,11 +208,12 @@ export default function StaffSettings({ api, headers, user, metadata }) {
                   value={form.role}
                   onChange={(e) => update("role", e.target.value)}
                 >
+                  <option value="HQ_ADMIN">HQ — Administrator</option>
                   <option value="STAFF">SU — Technician</option>
                   <option value="BRANCH_MANAGER">SM — Zone manager</option>
                 </select>
               </label>
-              <label>
+              {form.role !== "HQ_ADMIN" && <label>
                 Zone
                 <select
                   value={form.zone}
@@ -321,9 +227,9 @@ export default function StaffSettings({ api, headers, user, metadata }) {
                     <option key={z}>{z}</option>
                   ))}
                 </select>
-              </label>
+              </label>}
             </div>
-            <label>
+            {form.role !== "HQ_ADMIN" && <label>
               Branch
               <select
                 required
@@ -339,30 +245,10 @@ export default function StaffSettings({ api, headers, user, metadata }) {
                     </option>
                   ))}
               </select>
-            </label>
-            {user.role === "HQ_ADMIN" && !editing && (
-              <label>
-                Operator ownership
-                <select
-                  value={form.operatorId}
-                  onChange={(e) => {
-                    update("operatorId", e.target.value);
-                    setPreview(null);
-                  }}
-                >
-                  <option value="">Company staff</option>
-                  {operators.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-                <small>Also applies to the CSV import.</small>
-              </label>
-            )}
+            </label>}
             <div className="staff-actions">
               <button className="primary" disabled={busy}>
-                {editing ? "Save access" : "Add staff"}
+                {editing ? "Save access" : "Create credential"}
               </button>
               {editing && (
                 <button
@@ -381,17 +267,17 @@ export default function StaffSettings({ api, headers, user, metadata }) {
         </section>
         <section className="panel csv-panel">
           <h2>
-            <Upload size={20} /> Bulk add staff
+            <Upload size={20} /> Bulk credential creation
           </h2>
           <p className="muted">
-            Upload up to 500 staff. Every row is checked before any accounts are
+            Upload up to 500 HQ, manager, and technician accounts. Every row is checked before any accounts are
             created.
           </p>
           <button className="secondary" onClick={downloadTemplate}>
             <Download size={16} /> Download CSV template
           </button>
           <label>
-            Staff CSV
+            Credential CSV
             <input
               type="file"
               accept=".csv,text/csv"
@@ -401,7 +287,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
           </label>
           <p className="muted">
             Columns: name, email, password, role, branch_code, zone. Roles:
-            STAFF / SU or BRANCH_MANAGER / SM. Zone must match the branch.
+            HQ_ADMIN / HQ, STAFF / SU or BRANCH_MANAGER / SM. HQ rows leave branch and zone empty; other zones must match the branch.
           </p>
           {filename && <p>{filename}</p>}
           <button
@@ -432,7 +318,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
                         <td>{s.name}</td>
                         <td>{s.email}</td>
                         <td>{s.role}</td>
-                        <td>{s.zone}</td>
+                        <td>{s.zone || "All zones"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -443,7 +329,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
                 disabled={busy}
                 onClick={() => importCsv(false)}
               >
-                {busy ? "Adding staff…" : `Add ${preview.count} staff`}
+                {busy ? "Creating credentials…" : `Create ${preview.count} credentials`}
               </button>
             </div>
           )}
@@ -451,7 +337,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
       </div>
       <section className="panel">
         <h2>
-          Staff directory <small>({staff.length})</small>
+          Managed credentials <small>({staff.length})</small>
         </h2>
         <div className="staff-table-scroll">
           <table>
@@ -466,7 +352,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
             </thead>
             <tbody>
               {staff
-                .filter((s) => ["STAFF", "BRANCH_MANAGER"].includes(s.role))
+                .filter((s) => ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"].includes(s.role))
                 .map((s) => (
                   <tr key={s.id}>
                     <td>
@@ -474,10 +360,10 @@ export default function StaffSettings({ api, headers, user, metadata }) {
                       <small>{s.email}</small>
                     </td>
                     <td>
-                      {s.role === "STAFF" ? "SU — Technician" : "SM — Manager"}
+                      {s.role === "HQ_ADMIN" ? "HQ — Administrator" : s.role === "STAFF" ? "SU — Technician" : "SM — Manager"}
                     </td>
                     <td>{s.zone || s.branch?.zone || "—"}</td>
-                    <td>{s.branch?.name || "—"}</td>
+                    <td>{s.branch?.name || "HQ / global"}</td>
                     <td>
                       <button
                         className="secondary"
@@ -500,7 +386,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
             </tbody>
           </table>
         </div>
-        {!staff.length && <p className="muted">No staff in your scope yet.</p>}
+        {!staff.length && <p className="muted">No managed credentials yet.</p>}
       </section>
     </div>
   );
