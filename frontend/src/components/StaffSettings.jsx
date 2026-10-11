@@ -21,7 +21,8 @@ export default function StaffSettings({ api, headers, user, metadata }) {
   const [candidates, setCandidates] = useState([]), [candidate, setCandidate] = useState(""), [candidateSearch, setCandidateSearch] = useState("");
   const [csv, setCsv] = useState(""), [preview, setPreview] = useState(null), [csvErrors, setCsvErrors] = useState([]);
   const token = headers.Authorization;
-  const sites = metadata?.branches || [];
+  const sites = metadata?.assignmentBranches || metadata?.branches || [];
+  const [destination, setDestination] = useState(user.branchId || "");
   const load = useCallback(async () => {
     try { const { data } = await api.get("/api/staff", { headers: { Authorization: token } }); setStaff(data); setError(""); }
     catch (e) { setError(e.response?.data?.message || "Unable to load access list"); }
@@ -69,7 +70,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
   };
   const assign = async (event) => {
     event.preventDefault(); setBusy(true); setModalError("");
-    try { await api.post("/api/staff/assign-technician", { technicianId: candidate }, { headers }); setEditor(null); setNotice("Technician added to your site. Their tickets are now visible to you."); await load(); }
+    try { await api.post("/api/staff/assign-technician", { technicianId: candidate, branchId: destination }, { headers }); setEditor(null); setNotice("Technician assigned to the selected site."); await load(); }
     catch (e) { setModalError(e.response?.data?.message || "Unable to assign technician"); }
     finally { setBusy(false); }
   };
@@ -78,8 +79,8 @@ export default function StaffSettings({ api, headers, user, metadata }) {
     {error && <div className="error" role="alert">{error}<button className="secondary" onClick={load}>Retry</button></div>}
     {notice && <div className="notice" role="status">{notice}</div>}
     <section className="panel access-list-panel">
-      <div className="access-list-head"><div><span className="operator-kicker"><ShieldCheck size={15}/> ACCESS CONTROL</span><h2>Account access <small>({staff.length})</small></h2><p className="muted">{siteManager ? "Manage technician access at your assigned site." : operator ? "Register accounts and manage HQ, site manager, and technician access." : "Manage technician and site manager access across all sites."}</p></div>
-        {siteManager && <button className="primary" onClick={openAssign}><Plus size={16}/> Add technician to my site</button>}
+      <div className="access-list-head"><div><span className="operator-kicker"><ShieldCheck size={15}/> ACCESS CONTROL</span><h2>Account access <small>({staff.length})</small></h2><p className="muted">{siteManager ? "Manage your technicians or send any existing technician to any site." : operator ? "Register accounts and manage HQ, site manager, and technician access." : "Manage technician and site manager access across all sites."}</p></div>
+        {siteManager && <button className="primary" onClick={openAssign}><Plus size={16}/> Assign technician to a site</button>}
         {operator && <div className="staff-actions"><button className="secondary" onClick={() => { setEditor({ mode: "bulk" }); setModalError(""); setCsvErrors([]); }}><Upload size={16}/> Bulk import</button><button className="primary" onClick={() => open(null)}><Plus size={16}/> New staff</button></div>}
       </div>
       <label className="access-search"><Search size={17}/><input aria-label="Search accounts" placeholder="Search name, email, role or site" value={search} onChange={(e) => setSearch(e.target.value)}/></label>
@@ -88,14 +89,15 @@ export default function StaffSettings({ api, headers, user, metadata }) {
       </tr>)}</tbody></table></div>
       {!visible.length && <p className="access-empty muted">{loading ? "Loading account access…" : "No accounts match this list."}</p>}
     </section>
-    {editor && <AccessDialog title={editor.mode === "assign" ? "Add technician to my site" : editor.mode === "bulk" ? "Bulk account registration" : editor.mode === "edit" ? `Edit access · ${form.name}` : "Register a new account"} close={() => { if (!busy) { setEditor(null); setForm(blank); } }}>
+    {editor && <AccessDialog title={editor.mode === "assign" ? "Assign technician to a site" : editor.mode === "bulk" ? "Bulk account registration" : editor.mode === "edit" ? `Edit access · ${form.name}` : "Register a new account"} close={() => { if (!busy) { setEditor(null); setForm(blank); } }}>
       {modalError && <div className="error" role="alert">{modalError}</div>}
       {editor.mode === "assign" ? <form onSubmit={assign} className="access-editor">
-        <p className="muted">Choose an existing technician. This moves their site assignment to {user.branch?.name || "your site"}; it does not create a new login or move historical tickets.</p>
+        <p className="muted">Choose an existing technician. Select any destination site. This changes their current site assignment without moving historical tickets.</p>
         <label>Find a technician<input value={candidateSearch} onChange={(e) => setCandidateSearch(e.target.value)} placeholder="Search name, email or current site"/></label>
         <label>Technician<select required value={candidate} onChange={(e) => setCandidate(e.target.value)}><option value="">Choose technician</option>{candidates.filter((item) => `${item.name} ${item.email} ${item.branch?.name || ""}`.toLowerCase().includes(candidateSearch.toLowerCase())).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.email} · {item.branch?.name || "Unassigned"}</option>)}</select></label>
+        <label>Destination site<select required value={destination} onChange={(e) => setDestination(e.target.value)}><option value="">Choose site</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.zone} · {site.name}</option>)}</select></label>
         {!busy && !candidates.length && !modalError && <p className="muted">No other technicians are available to add.</p>}
-        <button className="primary" disabled={busy || !candidate}>{busy ? "Loading…" : "Add to my site"}</button>
+        <button className="primary" disabled={busy || !candidate || !destination}>{busy ? "Loading…" : "Assign to selected site"}</button>
       </form> : editor.mode === "bulk" ? <div className="access-bulk"><p className="muted">Up to 500 accounts. Every row is checked before any account is registered.</p><button className="secondary" onClick={downloadTemplate}><Download size={16}/> Download CSV template</button><label>Account CSV<input type="file" accept=".csv,text/csv" disabled={busy} onChange={async (e) => {
         setPreview(null); setModalError(""); setCsvErrors([]); setCsv(""); const file = e.target.files[0]; if (!file) return;
         if (file.size > 512000 || !/\.csv$/i.test(file.name)) { setModalError("Choose a CSV file under 500 KB."); return; }
@@ -108,7 +110,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
         <div className="two"><label>Full name<input required minLength={2} maxLength={120} value={form.name} onChange={(e) => update("name", e.target.value)}/></label><label>Login email<input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)}/></label></div>
         {operator && <label>{editor.mode === "create" ? "Initial password" : "Reset password (optional)"}<input type="password" autoComplete="new-password" required={editor.mode === "create"} minLength={12} value={form.password} onChange={(e) => update("password", e.target.value)}/><small>12 or more characters. Leave empty to keep an existing password.</small></label>}
         <label>Access level<select disabled={siteManager} value={form.role} onChange={(e) => update("role", e.target.value)}><option value="STAFF">Technician</option>{!siteManager && <option value="BRANCH_MANAGER">Site manager</option>}{operator && <option value="HQ_ADMIN">HQ administrator</option>}</select></label>
-        {form.role !== "HQ_ADMIN" && <div className="two"><label>Region<select required disabled={siteManager} value={form.region} onChange={(e) => update("region", e.target.value)}><option value="">Choose region</option>{metadata?.zones?.map((region) => <option key={region} value={region}>{region === "EC" ? "East Coast (EC)" : region}</option>)}</select></label><label>Site<select required disabled={siteManager} value={form.site_code} onChange={(e) => update("site_code", e.target.value)}><option value="">Choose site</option>{sites.filter((site) => !form.region || site.zone === form.region).map((site) => <option key={site.id} value={site.code}>{site.name}</option>)}</select></label></div>}
+        {form.role !== "HQ_ADMIN" && <div className="two"><label>Region<select required value={form.region} onChange={(e) => update("region", e.target.value)}><option value="">Choose region</option>{[...new Set(sites.map((site) => site.zone))].map((region) => <option key={region} value={region}>{region === "EC" ? "East Coast (EC)" : region}</option>)}</select></label><label>Site<select required value={form.site_code} onChange={(e) => update("site_code", e.target.value)}><option value="">Choose site</option>{sites.filter((site) => !form.region || site.zone === form.region).map((site) => <option key={site.id} value={site.code}>{site.name}</option>)}</select></label></div>}
         {editor.mode === "edit" && <label className="access-toggle"><input type="checkbox" checked={form.accessEnabled !== false} onChange={(e) => update("accessEnabled", e.target.checked)}/><span>Give login access<small>Disabling access prevents sign-in and stops existing sessions.</small></span></label>}
         <div className="staff-actions"><button type="button" className="secondary" disabled={busy} onClick={() => { setEditor(null); setForm(blank); }}>Cancel</button><button className="primary" disabled={busy}>{busy ? "Saving…" : editor.mode === "edit" ? "Save access" : "Register account"}</button></div>
       </form>}

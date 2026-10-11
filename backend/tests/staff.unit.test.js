@@ -9,7 +9,9 @@ jest.mock("../src/utils/prisma", () => ({
     createMany: jest.fn(),
     updateMany: jest.fn(),
     findUnique: jest.fn(),
+    delete: jest.fn(),
   },
+  ticket: { updateMany: jest.fn() },
   operator: { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() },
   branch: { findMany: jest.fn(), findUnique: jest.fn() },
   $transaction: jest.fn(),
@@ -34,6 +36,7 @@ app.use((req, res, next) => {
 app.post("/import", c.importCsv);
 app.post("/staff", c.create);
 app.patch("/staff/:id", c.update);
+app.delete("/staff/:id", c.remove);
 app.get("/staff", c.list);
 app.get("/technicians", c.technicians);
 app.post("/assign", c.assignTechnician);
@@ -234,27 +237,29 @@ test("HQ can edit staff access but cannot grant HQ or operator privileges", asyn
   for (const role of ["HQ_ADMIN", "OPERATOR"]) expect((await request(app).patch("/staff/tech1").set("x-role", "HQ_ADMIN").send({ role })).status).toBeGreaterThanOrEqual(400);
   expect(prisma.user.findFirst.mock.lastCall[0].where.role.in).toEqual(["STAFF", "BRANCH_MANAGER"]);
 });
-test("site managers edit only their technicians and cannot promote, reset passwords or change destination site", async () => {
+test("site managers can move their technicians but cannot promote or reset passwords", async () => {
   const target = { id: "tech1", name: "Technician", email: "tech@test.com", role: "STAFF", branchId: "br1", zone: "CENTRAL", operatorId: null };
   prisma.user.findFirst.mockResolvedValue(target); prisma.user.updateMany.mockResolvedValue({ count: 1 }); prisma.user.findUnique.mockResolvedValue(target);
   expect((await request(app).patch("/staff/tech1").set("x-role", "BRANCH_MANAGER").send({ accessEnabled: false })).status).toBe(200);
   expect(prisma.user.findFirst.mock.lastCall[0].where).toMatchObject({ role: "STAFF", branchId: "br1" });
   expect(prisma.user.updateMany.mock.lastCall[0].where).toMatchObject({ role: "STAFF", branchId: "br1" });
-  for (const payload of [{ role: "BRANCH_MANAGER" }, { site_code: "BR2", region: "EC" }, { password: "Changed-password-123" }]) expect((await request(app).patch("/staff/tech1").set("x-role", "BRANCH_MANAGER").send(payload)).status).toBe(403);
+  for (const payload of [{ role: "BRANCH_MANAGER" }, { password: "Changed-password-123" }]) expect((await request(app).patch("/staff/tech1").set("x-role", "BRANCH_MANAGER").send(payload)).status).toBe(403);
+  expect((await request(app).patch("/staff/tech1").set("x-role", "BRANCH_MANAGER").send({ site_code: "BR2", region: "EC" })).status).toBe(200);
+  expect(prisma.user.updateMany.mock.lastCall[0].data).toMatchObject({ branchId: "br2", zone: "EC" });
   prisma.user.findFirst.mockResolvedValue(null);
   expect((await request(app).patch("/staff/outside").set("x-role", "BRANCH_MANAGER").send({ accessEnabled: true })).status).toBe(404);
 });
-test("site manager adds an existing technician to their own site and cannot forge role or destination", async () => {
-  prisma.branch.findUnique.mockResolvedValue({ id: "br1", zone: "CENTRAL" });
+test("site manager sends an existing technician to any chosen site without granting extra privileges", async () => {
+  prisma.branch.findUnique.mockResolvedValue({ id: "br3", zone: "SOUTHERN" });
   prisma.user.findFirst.mockResolvedValue({ id: "tech2", role: "STAFF", branchId: "br2" });
   prisma.user.updateMany.mockResolvedValue({ count: 1 }); prisma.user.findUnique.mockResolvedValue({ id: "tech2", role: "STAFF", branchId: "br1" });
-  const result = await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2", branchId: "forged", role: "HQ_ADMIN", accessEnabled: true });
+  const result = await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2", branchId: "br3", role: "HQ_ADMIN", accessEnabled: true });
   expect(result.status).toBe(200);
   expect(prisma.user.findFirst.mock.lastCall[0].where).toEqual({ id: "tech2", role: "STAFF" });
-  expect(prisma.user.updateMany.mock.lastCall[0]).toEqual({ where: { id: "tech2", role: "STAFF", branchId: "br2" }, data: { branchId: "br1", zone: "CENTRAL" } });
+  expect(prisma.user.updateMany.mock.lastCall[0]).toEqual({ where: { id: "tech2", role: "STAFF", branchId: "br2" }, data: { branchId: "br3", zone: "SOUTHERN" } });
   expect(scope({ role: "BRANCH_MANAGER", branchId: "br1" }).OR).toContainEqual({ requester: { role: "STAFF", branchId: "br1" } });
   prisma.user.findFirst.mockResolvedValue(null);
-  expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "hq" })).status).toBe(404);
+  expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "hq", branchId: "br3" })).status).toBe(404);
   expect((await request(app).post("/assign").set("x-role", "STAFF").send({ technicianId: "tech2" })).status).toBe(403);
 });
 test("site/region CSV headers work and duplicate aliases cannot bypass header validation", () => {
@@ -264,6 +269,43 @@ test("site/region CSV headers work and duplicate aliases cannot bypass header va
 test("site-manager assignment list includes unassigned technicians and technicians at other sites", async () => {
   const response = await request(app).get("/technicians").set("x-role", "BRANCH_MANAGER");
   expect(response.status).toBe(200);
-  expect(prisma.user.findMany.mock.lastCall[0].where).toEqual({ role: "STAFF", OR: [{ branchId: null }, { branchId: { not: "br1" } }] });
+  expect(prisma.user.findMany.mock.lastCall[0].where).toEqual({ role: "STAFF" });
   expect(prisma.user.findMany.mock.lastCall[0].select.passwordHash).toBeUndefined();
+});
+
+test("only operators can delete users; protected accounts and missing confirmation cannot be deleted", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
+    expect((await request(app).delete("/staff/tech1").set("x-role", role).send({ confirmation: "DELETE USER" })).status).toBe(403);
+  }
+  expect((await request(app).delete("/staff/actor").send({ confirmation: "DELETE USER" })).status).toBe(403);
+  expect((await request(app).delete("/staff/tech1").send({})).status).toBe(400);
+  prisma.user.findUnique.mockResolvedValue({ id: "other-operator", role: "OPERATOR" });
+  expect((await request(app).delete("/staff/other-operator").send({ confirmation: "DELETE USER" })).status).toBe(403);
+  expect(prisma.user.delete).not.toHaveBeenCalled();
+});
+test("operator deletion clears assignments and removes user in a transaction", async () => {
+  prisma.user.findUnique.mockResolvedValue({ id: "tech1", role: "STAFF" });
+  const result = await request(app).delete("/staff/tech1").send({ confirmation: "DELETE USER" });
+  expect(result.status).toBe(200);
+  expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  expect(prisma.ticket.updateMany).toHaveBeenCalledWith({ where: { assigneeId: "tech1" }, data: { assigneeId: null, escalatedAt: null } });
+  expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "tech1" } });
+});
+test("assignment rejects missing or unknown destination and detects a concurrent move", async () => {
+  expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2" })).status).toBe(400);
+  prisma.branch.findUnique.mockResolvedValue(null);
+  expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2", branchId: "unknown" })).status).toBe(400);
+  expect(prisma.user.updateMany).not.toHaveBeenCalled();
+  prisma.branch.findUnique.mockResolvedValue({ id: "br2", zone: "EC" });
+  prisma.user.findFirst.mockResolvedValue({ id: "tech2", role: "STAFF", branchId: "br1" });
+  prisma.user.updateMany.mockResolvedValue({ count: 0 });
+  expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2", branchId: "br2" })).status).toBe(409);
+});
+test("delete route rejects forged operator JWT claims", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
+    prisma.user.findUnique.mockResolvedValue({ id: "actor", role });
+    const fake = jwt.sign({ userId: "actor", role: "OPERATOR" }, process.env.JWT_SECRET);
+    expect((await request(routedApp).delete("/staff/tech1").set("Authorization", `Bearer ${fake}`).send({ confirmation: "DELETE USER" })).status).toBe(403);
+  }
+  expect(prisma.user.delete).not.toHaveBeenCalled();
 });

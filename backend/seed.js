@@ -17,17 +17,6 @@ async function main() {
   // Existing demo accounts follow the region of their retained site ID.
   for (const site of allBranches)
     await prisma.user.updateMany({ where: { branchId: site.id }, data: { zone: site.zone } });
-  const demoHash = await bcrypt.hash("DemoSite2026!", 12);
-  for (const site of allBranches) {
-    const slug = site.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    for (const [prefix, role] of [["manager", "BRANCH_MANAGER"], ["tech", "STAFF"]]) {
-      await prisma.user.upsert({
-        where: { email: `${prefix}-${slug}@test.com` },
-        update: {},
-        create: { email: `${prefix}-${slug}@test.com`, name: `${site.name} ${prefix === "tech" ? "Technician" : "Manager"}`, role, branchId: site.id, zone: site.zone, passwordHash: demoHash },
-      });
-    }
-  }
   const branches = allBranches.slice(0, 3);
   // Bootstrap a dedicated system-control account; never reset its password on redeploy.
   if (process.env.OPERATOR_EMAIL || process.env.OPERATOR_PASSWORD) {
@@ -55,143 +44,157 @@ async function main() {
     });
   }
 
-  await prisma.user.upsert({
-    where: { email: "hq@test.com" },
-    update: {},
-    create: {
-      email: "hq@test.com",
-      name: "HQ Service Control",
-      role: "HQ_ADMIN",
-      passwordHash: adminHash,
-    },
-  });
-  const managers = [];
-  for (const branch of branches) {
-    const n = branch.code.slice(-1);
-    managers.push(
-      await prisma.user.upsert({
-        where: { email: `managerbranch${n}@test.com` },
-        update: { name: `${branch.name} Manager`, zone: branch.zone },
-        create: {
-          email: `managerbranch${n}@test.com`,
-          name: `${branch.name} Manager`,
-          role: "BRANCH_MANAGER",
-          branchId: branch.id,
-          zone: branch.zone,
-          passwordHash: adminHash,
-        },
-      }),
-    );
-  }
-  for (let i = 1; i <= 5; i++) {
-    const email = `testuser${i}@test.com`;
-    const legacyEmail = `testuser${i}branch1@test.com`;
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (!existing) {
-      const legacy = await prisma.user.findUnique({
-        where: { email: legacyEmail },
-      });
-      if (legacy) {
-        await prisma.user.update({
-          where: { id: legacy.id },
-          data: {
-            email,
-            name: `Test User ${i}`,
-            branchId: branches[0].id,
-            role: "STAFF",
-            zone: branches[0].zone,
-          },
+  // Demo data is opt-in so deleted accounts/tickets stay deleted after redeploy.
+  if (process.env.SEED_DEMO_DATA === "true") {
+    const demoHash = await bcrypt.hash("DemoSite2026!", 12);
+    for (const site of allBranches) {
+      const slug = site.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      for (const [prefix, role] of [["manager", "BRANCH_MANAGER"], ["tech", "STAFF"]]) {
+        await prisma.user.upsert({
+          where: { email: `${prefix}-${slug}@test.com` },
+          update: {},
+          create: { email: `${prefix}-${slug}@test.com`, name: `${site.name} ${prefix === "tech" ? "Technician" : "Manager"}`, role, branchId: site.id, zone: site.zone, passwordHash: demoHash },
         });
-        continue;
       }
     }
     await prisma.user.upsert({
-      where: { email },
+      where: { email: "hq@test.com" },
       update: {},
       create: {
-        email,
-        name: `Test User ${i}`,
-        branchId: branches[0].id,
-        zone: branches[0].zone,
-        role: "STAFF",
-        passwordHash: staffHash,
+        email: "hq@test.com",
+        name: "HQ Service Control",
+        role: "HQ_ADMIN",
+        passwordHash: adminHash,
       },
     });
-  }
-  for (let branchNumber = 1; branchNumber <= 3; branchNumber++) {
+    const managers = [];
+    for (const branch of branches) {
+      const n = branch.code.slice(-1);
+      managers.push(
+        await prisma.user.upsert({
+          where: { email: `managerbranch${n}@test.com` },
+          update: { name: `${branch.name} Manager`, zone: branch.zone },
+          create: {
+            email: `managerbranch${n}@test.com`,
+            name: `${branch.name} Manager`,
+            role: "BRANCH_MANAGER",
+            branchId: branch.id,
+            zone: branch.zone,
+            passwordHash: adminHash,
+          },
+        }),
+      );
+    }
     for (let i = 1; i <= 5; i++) {
-      const legacyEmail = `testuser${i}branch${branchNumber}@test.com`;
-      const legacy = await prisma.user.findUnique({
-        where: { email: legacyEmail },
-      });
-      if (!legacy) continue;
-      await prisma.user.update({
-        where: { id: legacy.id },
-        data: {
-          email: `archived-${legacyEmail}`,
-          name: `Archived Test User ${i}`,
+      const email = `testuser${i}@test.com`;
+      const legacyEmail = `testuser${i}branch1@test.com`;
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (!existing) {
+        const legacy = await prisma.user.findUnique({
+          where: { email: legacyEmail },
+        });
+        if (legacy) {
+          await prisma.user.update({
+            where: { id: legacy.id },
+            data: {
+              email,
+              name: `Test User ${i}`,
+              branchId: branches[0].id,
+              role: "STAFF",
+              zone: branches[0].zone,
+            },
+          });
+          continue;
+        }
+      }
+      await prisma.user.upsert({
+        where: { email },
+        update: {},
+        create: {
+          email,
+          name: `Test User ${i}`,
+          branchId: branches[0].id,
+          zone: branches[0].zone,
+          role: "STAFF",
+          passwordHash: staffHash,
         },
       });
     }
-  }
-  if ((await prisma.ticket.count()) === 0) {
-    const staff = [];
-    for (let i = 1; i <= 5; i++)
-      staff.push(
-        await prisma.user.findUnique({
-          where: { email: `testuser${i}@test.com` },
-        }),
-      );
-    const samples = [
-      ["Air handling unit not cooling", "HVAC", "HIGH", "IN_PROGRESS"],
-      ["Loading bay camera offline", "CCTV", "MEDIUM", "IN_PROGRESS"],
-      [
-        "Smoke detector fault on Level 2",
-        "Fire Alarm",
-        "CRITICAL",
-        "IN_PROGRESS",
-      ],
-      ["Building automation schedule incorrect", "BAS", "LOW", "WAITING"],
-      ["Gas pressure sensor inspection", "Gas System", "HIGH", "RESOLVED"],
-      ["Passenger lift door fault", "Elevator", "CRITICAL", "CLOSED"],
-    ];
-    for (let i = 0; i < 60; i++) {
-      const [title, category, priority, status] = samples[i % samples.length];
-      const requester = staff[i % staff.length];
-      const [response, resolution] = sla[priority];
-      await prisma.ticket.create({
-        data: {
-          reference: `ENG-${String(i + 101).padStart(4, "0")}`,
-          title,
-          category,
-          priority,
-          status,
-          description: `Demo engineering service request: ${title.toLowerCase()}. A safe assessment and corrective action are required.`,
-          branchId: allBranches[i % allBranches.length].id,
-          requesterId: requester.id,
-          createdAt: hoursAgo((i + 1) * 20),
-          responseDueAt: hoursAgo((i + 1) * 20 - response),
-          resolutionDueAt: hoursAgo((i + 1) * 20 - resolution),
-          acknowledgedAt: [
-            "ACKNOWLEDGED",
-            "IN_PROGRESS",
-            "WAITING",
-            "RESOLVED",
-            "CLOSED",
-          ].includes(status)
-            ? hoursAgo((i + 1) * 20 - 0.5)
-            : null,
-          waitingSince:
-            status === "WAITING" ? hoursAgo((i + 1) * 20 - 1) : null,
-          closedAt: status === "CLOSED" ? hoursAgo((i + 1) * 20 - (i % 2 ? resolution + 2 : resolution - 1) - .5) : null,
-          resolvedAt:
-            ["RESOLVED", "CLOSED"].includes(status)
-              ? hoursAgo(
-                  (i + 1) * 20 - (i % 2 ? resolution + 2 : resolution - 1),
-                )
+    for (let branchNumber = 1; branchNumber <= 3; branchNumber++) {
+      for (let i = 1; i <= 5; i++) {
+        const legacyEmail = `testuser${i}branch${branchNumber}@test.com`;
+        const legacy = await prisma.user.findUnique({
+          where: { email: legacyEmail },
+        });
+        if (!legacy) continue;
+        await prisma.user.update({
+          where: { id: legacy.id },
+          data: {
+            email: `archived-${legacyEmail}`,
+            name: `Archived Test User ${i}`,
+          },
+        });
+      }
+    }
+    if ((await prisma.ticket.count()) === 0) {
+      const staff = [];
+      for (let i = 1; i <= 5; i++)
+        staff.push(
+          await prisma.user.findUnique({
+            where: { email: `testuser${i}@test.com` },
+          }),
+        );
+      const samples = [
+        ["Air handling unit not cooling", "HVAC", "HIGH", "IN_PROGRESS"],
+        ["Loading bay camera offline", "CCTV", "MEDIUM", "IN_PROGRESS"],
+        [
+          "Smoke detector fault on Level 2",
+          "Fire Alarm",
+          "CRITICAL",
+          "IN_PROGRESS",
+        ],
+        ["Building automation schedule incorrect", "BAS", "LOW", "WAITING"],
+        ["Gas pressure sensor inspection", "Gas System", "HIGH", "RESOLVED"],
+        ["Passenger lift door fault", "Elevator", "CRITICAL", "CLOSED"],
+      ];
+      for (let i = 0; i < 60; i++) {
+        const [title, category, priority, status] = samples[i % samples.length];
+        const requester = staff[i % staff.length];
+        const [response, resolution] = sla[priority];
+        await prisma.ticket.create({
+          data: {
+            reference: `ENG-${String(i + 101).padStart(4, "0")}`,
+            title,
+            category,
+            priority,
+            status,
+            description: `Demo engineering service request: ${title.toLowerCase()}. A safe assessment and corrective action are required.`,
+            branchId: allBranches[i % allBranches.length].id,
+            requesterId: requester.id,
+            createdAt: hoursAgo((i + 1) * 20),
+            responseDueAt: hoursAgo((i + 1) * 20 - response),
+            resolutionDueAt: hoursAgo((i + 1) * 20 - resolution),
+            acknowledgedAt: [
+              "ACKNOWLEDGED",
+              "IN_PROGRESS",
+              "WAITING",
+              "RESOLVED",
+              "CLOSED",
+            ].includes(status)
+              ? hoursAgo((i + 1) * 20 - 0.5)
               : null,
-        },
-      });
+            waitingSince:
+              status === "WAITING" ? hoursAgo((i + 1) * 20 - 1) : null,
+            closedAt: status === "CLOSED" ? hoursAgo((i + 1) * 20 - (i % 2 ? resolution + 2 : resolution - 1) - .5) : null,
+            resolvedAt:
+              ["RESOLVED", "CLOSED"].includes(status)
+                ? hoursAgo(
+                    (i + 1) * 20 - (i % 2 ? resolution + 2 : resolution - 1),
+                  )
+                : null,
+          },
+        });
+      }
     }
   }
   await prisma.ticket.updateMany({
@@ -199,7 +202,7 @@ async function main() {
     data: { status: "IN_PROGRESS" },
   });
   await prisma.$executeRaw`UPDATE "Ticket" SET "waitingSince" = "updatedAt" WHERE "status" = 'WAITING' AND "waitingSince" IS NULL`;
-  console.log("Seed complete. Staff: password123; managers/HQ: admin123.");
+  console.log("Bootstrap complete. Demo data is created only when SEED_DEMO_DATA=true.");
 }
 main()
   .catch((error) => {

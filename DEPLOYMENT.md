@@ -13,17 +13,17 @@ build time; the database is the managed Postgres in Supabase.
 3. Deploy. The container runs `node start.js`.
 4. Seed demo data once if needed (Render → service → Shell):
    ```bash
-   cd backend && node seed.js
+   cd backend && SEED_DEMO_DATA=true node seed.js
    ```
 
 The demo container runs `prisma db push` and the idempotent seed at startup.
 The legacy migration files describe the previous receipt application, not the
 current ticketing schema. Back up existing databases before schema changes.
-Seeding preserves existing account credentials and adds sample tickets only to an empty ticket table.
+Seeding preserves existing account credentials. Demo accounts and sample tickets require `SEED_DEMO_DATA=true`; leave it unset during normal startup.
 
 ## Local — Docker Compose (self-contained)
 
-Brings up Postgres + the app, prepares the ticketing schema and seeds demo data:
+Brings up Postgres + the app, prepares the ticketing schema and bootstraps configured operator access:
 
 ```bash
 docker compose up --build   # app on http://localhost:8080
@@ -124,3 +124,23 @@ The SQL and schema are supplied in the repository. Applying them to your live
 Supabase project requires its database connection; repository updates alone do
 not confirm a live database upgrade. Render services configured for auto-deploy
 will run the Docker schema setup when this change reaches their deployed branch.
+
+
+### October 11 workflow and data controls
+
+Startup `prisma db push` makes `Ticket.requesterId` and `TicketComment.authorId`
+nullable with `ON DELETE SET NULL`. Apply this schema before starting the updated
+API if deploying outside Docker. Account deletion preserves ticket/comment history;
+the UI labels removed authors as “Deleted user”. Assigned tickets become unassigned.
+Operators cannot delete themselves or other operator accounts through these controls.
+
+Demo accounts and sample tickets now require `SEED_DEMO_DATA=true`. Leave this unset
+for normal deployments so operator deletions stay deleted on restart. Site bootstrap,
+operator bootstrap, and existing status normalization still run. Only enable demo
+seeding intentionally on a test installation.
+
+Operator data settings are available in Profile and Access control. Deleting all
+tickets requires the exact phrase `DELETE ALL TICKETS`; deleting a selected user
+requires `DELETE USER`. Both endpoints verify the current database role. The ticket
+reset removes every ticket and its comments across all dates/sites, retaining users
+and sites. No deletion is performed by deployment itself.

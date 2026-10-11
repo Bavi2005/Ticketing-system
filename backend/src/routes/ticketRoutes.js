@@ -4,6 +4,8 @@ const c = require("../controllers/ticketController");
 const router = express.Router();
 router.use(auth);
 router.get("/metadata", c.metadata);
+router.get("/assignments", c.assignments);
+router.delete("/", c.deleteAll);
 router.get("/dashboard", c.dashboard);
 router.get("/", c.list);
 router.post("/", c.create);

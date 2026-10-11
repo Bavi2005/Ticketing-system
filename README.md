@@ -7,7 +7,7 @@ A responsive engineering operations workspace with live reporting, six service s
 - Every metric opens HVAC, CCTV, Fire Alarm, BAS, Gas System and Elevator, then the matching tickets.
 - Malaysia reporting dates (UTC+8), zone and branch filters apply consistently to metrics and both health cards.
 - Technicians see tickets they raised or are assigned. Site managers see tickets at their site and tickets raised by or assigned to technicians currently under them. HQ and operators have platform-wide oversight.
-- Operators register HQ, managers, and technicians individually or through validated CSV bulk imports. HQ edits technician and manager access. Site managers edit their own technicians and can add any existing technician to their site. Only operators create new login accounts or reset another user's password.
+- Operators register HQ, managers, and technicians individually or through validated CSV bulk imports. HQ edits technician and manager access. Site managers edit their own technicians and can assign any existing technician to any site. Only operators create new login accounts or reset another user's password.
 - Access control is a single searchable list. Edit access, registration, bulk import, and site assignment open ticket-style dialogs with a blurred backdrop. HQ and site managers enter Access control through the profile menu between Profile details and Log out.
 - Login access can be enabled or disabled. The API checks the current database role and access flag on every authenticated request, including existing sessions.
 - One sign-in page serves every role. Reporting is available in every workspace and through **View public report** before login. Public reports show zero-filled year/month and last-seven-day opening/closure event charts and recent ticket outcomes, without identities or internal notes.
@@ -42,7 +42,7 @@ The historical migration files belong to the previous receipt application. The c
 | Selangor manager | `managerbranch1@test.com` | `admin123`    |
 | HQ               | `hq@test.com`             | `admin123`    |
 
-The seed maintains the 26-site catalogue from `backend/src/utils/sites.js`. Existing BR1–BR16 site IDs are retained and renamed to the supplied catalogue in its listed order; BR17–BR26 are added. Ticket/user foreign keys remain intact. Users attached to a site receive its current region. Existing account passwords and access flags remain unchanged on reseed. The five original technician demo logins and three original manager demo logins remain available, alongside one new manager and one new technician test account per site. See [TEST_ACCOUNTS.md](TEST_ACCOUNTS.md) for the full temporary credential list. Sample tickets are added only when the ticket table is empty.
+The seed maintains the 26-site catalogue from `backend/src/utils/sites.js`. Existing BR1–BR16 site IDs are retained and renamed to the supplied catalogue in its listed order; BR17–BR26 are added. Ticket/user foreign keys remain intact. Users attached to a site receive its current region. Existing account passwords and access flags remain unchanged on reseed. The five original technician demo logins and three original manager demo logins remain available, alongside one new manager and one new technician test account per site. See [TEST_ACCOUNTS.md](TEST_ACCOUNTS.md) for the full temporary credential list. Demo accounts and sample tickets are created only with `SEED_DEMO_DATA=true`; sample tickets additionally require an empty ticket table. Leave this variable unset in normal deployments so deleted data stays deleted.
 
 ## Verification
 
@@ -50,4 +50,6 @@ The seed maintains the 26-site catalogue from `backend/src/utils/sites.js`. Exis
 - `npm run build --prefix frontend`: production build.
 - `npm run lint --prefix frontend`: lint checks (legacy inactive receipt components retain existing warnings).
 
-Staff have a personal ticket tracker with progress steps, ticket history and recent updates, refreshed every 15 seconds. Manager/HQ reporting refreshes every minute and on changes; manual refresh is available. The graph groups ticket creation dates by their current resolved/unresolved state, rather than presenting a historical backlog snapshot.
+Staff have a personal ticket tracker with progress steps, ticket history and recent updates, refreshed every 15 seconds. Manager/HQ reporting refreshes every 15 seconds and on changes; manual refresh is available. The graph groups ticket creation dates by their current resolved/unresolved state, rather than presenting a historical backlog snapshot.
+
+Current assignments appear in an all-dates inbox. Reassignment removes the ticket from the previous owner’s inbox and clears HQ escalation when assigned to a technician. Only the current technician assignee (or the requester when unassigned) may update technician workflow. HQ and site managers can filter by status and priority. Operator Profile and Access control include confirmed ticket reset and user deletion actions; deleting a user retains ticket/comment history.

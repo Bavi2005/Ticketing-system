@@ -25,4 +25,5 @@ router.post("/assign-technician", importLimit, c.assignTechnician);
 router.post("/", importLimit, (req, res, next) => req.user.role === "OPERATOR" ? next() : res.status(403).json({ message: "Only operators can create accounts" }), c.create);
 router.post("/import", importLimit, (req, res, next) => req.user.role === "OPERATOR" ? next() : res.status(403).json({ message: "Only operators can bulk-create accounts" }), c.importCsv);
 router.patch("/:id", c.update);
+router.delete("/:id", (req, res, next) => req.user.role === "OPERATOR" ? next() : res.status(403).json({ message: "Only operators can delete users" }), importLimit, c.remove);
 module.exports = router;

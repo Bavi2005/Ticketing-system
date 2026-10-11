@@ -81,8 +81,8 @@ model Ticket {
   status TicketStatus @default(IN_PROGRESS)
   branchId String
   branch Branch @relation(fields: [branchId], references: [id])
-  requesterId String
-  requester User @relation("RequesterTickets", fields: [requesterId], references: [id])
+  requesterId String?
+  requester User? @relation("RequesterTickets", fields: [requesterId], references: [id], onDelete: SetNull)
   assigneeId String?
   assignee User? @relation("AssigneeTickets", fields: [assigneeId], references: [id])
   responseDueAt DateTime
@@ -104,8 +104,8 @@ model TicketComment {
   id String @id @default(cuid())
   ticketId String
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  authorId String
-  author User @relation(fields: [authorId], references: [id])
+  authorId String?
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
   message String
   internal Boolean @default(false)
   createdAt DateTime @default(now())

@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import StaffSettings from "./components/StaffSettings";
+import OperatorDataSettings from "./components/OperatorDataSettings";
 import OperatorControlCenter from "./components/OperatorControlCenter";
 import ReportingPanel from "./components/ReportingPanel";
 
@@ -141,11 +142,13 @@ export default function App() {
     }
   }, []);
   const [session, setSession] = useState(storedSession);
+  const [staffVersion, setStaffVersion] = useState(0);
   const [page, setPage] = useState(location.hash.slice(1) || "overview");
   const [filters, setFilters] = useState(initialFilters);
   const [metric, setMetric] = useState("total"),
     [category, setCategory] = useState(null);
   const [data, setData] = useState(null),
+    [assignments, setAssignments] = useState([]),
     [metadata, setMetadata] = useState(null),
     [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false),
@@ -164,6 +167,7 @@ export default function App() {
     localStorage.removeItem("ticketSession");
     setSession(null);
     setData(null);
+    setAssignments([]);
     setMetadata(null);
     setSelected(null);
     setFilters(initialFilters());
@@ -216,23 +220,27 @@ export default function App() {
         zone: filters.zone || undefined,
         branchId: filters.branchId || undefined,
         metric: page === "overview" ? "total" : metric,
+        status: filters.status || undefined,
+        priority: filters.priority || undefined,
       };
       const config = {
         headers: { Authorization: `Bearer ${session.token}` },
         params,
       };
-      const [tickets, summary, meta, me] = await Promise.all([
+      const [tickets, summary, meta, me, assigned] = await Promise.all([
         api.get("/api/tickets", config),
         api.get("/api/tickets/dashboard", config),
         api.get("/api/tickets/metadata", config),
         api.get("/api/auth/me", config),
+        api.get("/api/tickets/assignments", { headers: config.headers }),
       ]);
       if (id === requestId.current) {
         loadedScope.current = scopeKey;
         setData({ tickets: tickets.data, summary: summary.data });
+        setAssignments(assigned.data);
         setSelected((previous) =>
           previous
-            ? tickets.data.find((t) => t.id === previous.id) || previous
+            ? tickets.data.find((t) => t.id === previous.id) || assigned.data.find((t) => t.id === previous.id) || null
             : null,
         );
         setMetadata(meta.data);
@@ -263,7 +271,7 @@ export default function App() {
     if (!session) return;
     const timer = setInterval(
       load,
-      session.user.role === "STAFF" ? 15000 : 60000,
+      15000,
     );
     return () => clearInterval(timer);
   }, [load, session]);
@@ -523,13 +531,23 @@ export default function App() {
                 </button>
               </div>
             )}
+          <details className="panel assignment-inbox">
+            <summary><BellRing size={18}/> Assigned to you <b>{assignments.length}</b><span>Active tickets · all dates</span></summary>
+            {assignments.length ? assignments.map((ticket) => <button className="assignment-item" key={ticket.id} onClick={() => setSelected(ticket)}><span><b>{ticket.reference}</b> · {ticket.title}</span><span>{label(ticket.status)} · {ticket.branch?.name}</span></button>) : <p className="muted">No active tickets assigned to you.</p>}
+          </details>
+          {manager && ["overview", "tickets"].includes(page) && <div className="register-filters panel manager-filters">
+            <label>Status<select aria-label="Filter tickets by status" value={filters.status || ""} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">All statuses</option>{statuses.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
+            <label>Priority<select aria-label="Filter tickets by priority" value={filters.priority || ""} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}><option value="">All priorities</option>{priorities.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
+            <button className="secondary" onClick={() => setFilters({ ...filters, status: "", priority: "" })}>Clear filters</button>
+          </div>}
           {page === "users" && manager ? (
-            <StaffSettings
+            <><StaffSettings
+              key={staffVersion}
               api={api}
               headers={headers}
               user={session.user}
               metadata={metadata}
-            />
+            />{operator && <OperatorDataSettings api={api} headers={headers} changed={() => { setStaffVersion((version) => version + 1); setSelected(null); load(); }} />}</>
           ) : page === "new" ? (
             <TicketForm
               metadata={metadata}
@@ -546,7 +564,7 @@ export default function App() {
               cancel={() => navigate("overview")}
             />
           ) : page === "profile" ? (
-            <ProfileSettings
+            <><ProfileSettings
               session={session}
               headers={headers}
               back={() => navigate(manager ? "overview" : "tickets")}
@@ -558,7 +576,7 @@ export default function App() {
                 setSession(nextSession);
                 setNotice("Profile details updated.");
               }}
-            />
+            />{operator && <OperatorDataSettings api={api} headers={headers} changed={() => { setStaffVersion((version) => version + 1); setSelected(null); load(); }} />}</>
           ) : page === "reporting" ? (
             <ReportingPanel api={api} />
           ) : (
@@ -731,6 +749,7 @@ export default function App() {
         <TicketModal
           ticket={selected}
           manager={manager}
+          userId={session.user.id}
           metadata={metadata}
           headers={headers}
           close={() => setSelected(null)}
@@ -1510,7 +1529,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     </div>
   );
 }
-function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
+function TicketModal({ ticket, manager, userId, metadata, headers, close, changed }) {
   const [current, setCurrent] = useState(ticket),
     [status, setStatus] = useState(ticket.status),
     [assignment, setAssignment] = useState(ticket.assigneeId || ""),
@@ -1525,6 +1544,10 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
     // Synchronise the open detail view with freshly polled server data.
     // eslint-disable-next-line react/set-state-in-effect
     setCurrent(ticket);
+    setStatus(ticket.status);
+    setAssignment(ticket.assigneeId || "");
+    setBranch(ticket.branchId);
+    setPriority(ticket.priority);
   }, [ticket]);
   useEffect(() => {
     const el = dialog.current;
@@ -1597,7 +1620,7 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
           Site<b>{current.branch?.name}</b>
         </div>
         <div>
-          Raised by<b>{current.requester?.name}</b>
+          Raised by<b>{current.requester?.name || "Deleted user"}</b>
         </div>
         <div>
           Created<b>{dateText(current.createdAt)}</b>
@@ -1611,7 +1634,7 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
           {error}
         </div>
       )}
-      {(manager || !["RESOLVED", "CLOSED"].includes(current.status)) && (
+      {(manager || ((!current.assigneeId || current.assigneeId === userId) && !["RESOLVED", "CLOSED"].includes(current.status))) && (
         <form
           className="workflow-form"
           onSubmit={(e) => {
@@ -1644,11 +1667,9 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
           SLA paused since {dateText(current.waitingSince)}.
         </p>
       )}
-      {current.escalatedAt && (
-        <p className="notice">
-          Assigned to HQ · {dateText(current.escalatedAt)}
-        </p>
-      )}
+      <p className="notice" role="status">
+        {current.assignee ? `Assigned to ${current.assignee.name}${current.assignee.role === "HQ_ADMIN" ? " (HQ)" : ""}${current.assigneeId === userId ? " · You" : ""}` : "Unassigned"}
+      </p>
       {manager && (
         <form
           className="assignment-form"
@@ -1694,8 +1715,7 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
             >
               <option value="">Unassigned</option>
               {metadata?.assignees
-                ?.filter((u) => u.role === "HQ_ADMIN" || u.branchId === branch)
-                .map((u) => (
+                ?.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.name}
                     {u.role === "HQ_ADMIN" ? " (HQ)" : ""}
@@ -1724,7 +1744,7 @@ function TicketModal({ ticket, manager, metadata, headers, close, changed }) {
           current.comments.map((c) => (
             <article key={c.id}>
               <div>
-                <b>{c.author?.name}</b>
+                <b>{c.author?.name || "Deleted user"}</b>
                 <small>
                   {dateText(c.createdAt)}
                   {c.internal && " · Internal note"}

@@ -4,6 +4,7 @@ process.env.DATABASE_URL ||= "postgresql://test:test@localhost:5432/test";
 process.env.JWT_SECRET ||= "ticketing-unit-test-secret";
 jest.mock("../src/utils/prisma", () => ({
   ticket: {
+    deleteMany: jest.fn(),
     findMany: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -37,6 +38,8 @@ app.use((req, res, next) => {
 });
 app.get("/dashboard", controller.dashboard);
 app.get("/tickets", controller.list);
+app.get("/assignments", controller.assignments);
+app.delete("/tickets", controller.deleteAll);
 app.post("/tickets", controller.create);
 app.patch("/tickets/:id", controller.update);
 app.post("/tickets/:id/comments", controller.comment);
@@ -472,4 +475,38 @@ test("legacy statuses cannot be selected", async () => {
         .send({ status: "NEW" })
     ).status,
   ).toBe(400);
+});
+
+test("HQ reassignment clears escalation and accepts technicians at another site", async () => {
+  prisma.ticket.findFirst.mockResolvedValue({ ...ticket, assigneeId: "hq", escalatedAt: new Date() });
+  prisma.user.findFirst.mockResolvedValue({ id: "alice", role: "STAFF", branchId: "other-site" });
+  const result = await request(app).patch("/tickets/t1").set("x-role", "HQ_ADMIN").send({ assigneeId: "alice" });
+  expect(result.status).toBe(200);
+  expect(prisma.ticket.updateMany.mock.lastCall[0].data).toEqual({ assigneeId: "alice", escalatedAt: null });
+  expect(prisma.user.findFirst.mock.lastCall[0].where).toMatchObject({ accessEnabled: true, OR: [{ role: "HQ_ADMIN" }, { role: "STAFF" }] });
+});
+test("technician cannot change a ticket assigned to HQ, but can after reassignment", async () => {
+  prisma.ticket.findFirst.mockResolvedValue({ ...ticket, assigneeId: "hq" });
+  expect((await request(app).patch("/tickets/t1").send({ status: "RESOLVED" })).status).toBe(403);
+  expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
+  prisma.ticket.findFirst.mockResolvedValue({ ...ticket, assigneeId: "alice" });
+  expect((await request(app).patch("/tickets/t1").send({ status: "RESOLVED" })).status).toBe(200);
+});
+test("assignment inbox uses current owner and excludes completed tickets regardless of report filters", async () => {
+  const result = await request(app).get("/assignments?from=2099-01-01&assigneeId=hq&status=CLOSED");
+  expect(result.status).toBe(200);
+  expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({ assigneeId: "alice", status: { notIn: ["RESOLVED", "CLOSED"] } });
+  expect(result.body[0].comments).toHaveLength(1);
+});
+test("only operator can delete all tickets and exact confirmation is required", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
+    expect((await request(app).delete("/tickets").set("x-role", role).send({ confirmation: "DELETE ALL TICKETS" })).status).toBe(403);
+  }
+  expect((await request(app).delete("/tickets").set("x-role", "OPERATOR").send({})).status).toBe(400);
+  expect(prisma.ticket.deleteMany).not.toHaveBeenCalled();
+  prisma.ticket.deleteMany.mockResolvedValue({ count: 8 });
+  const result = await request(app).delete("/tickets").set("x-role", "OPERATOR").send({ confirmation: "DELETE ALL TICKETS" });
+  expect(result.status).toBe(200);
+  expect(result.body.count).toBe(8);
+  expect(prisma.ticket.deleteMany).toHaveBeenCalledWith({});
 });

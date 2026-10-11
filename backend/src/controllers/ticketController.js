@@ -16,7 +16,7 @@ const {
 const include = {
   branch: true,
   requester: { select: { id: true, name: true } },
-  assignee: { select: { id: true, name: true } },
+  assignee: { select: { id: true, name: true, role: true } },
   comments: {
     include: { author: { select: { name: true, role: true } } },
     orderBy: { createdAt: "asc" },
@@ -45,19 +45,17 @@ exports.metadata = handle(async (req, res) => {
     orderBy: { name: "asc" },
   });
   const submissionBranches = branches;
+  const assignmentBranches = req.user.role === "BRANCH_MANAGER"
+    ? await prisma.branch.findMany({ orderBy: { name: "asc" } }) : branches;
   const assignees =
     req.user.role === "STAFF"
       ? []
       : await prisma.user.findMany({
           where: {
+            accessEnabled: true,
             OR: [
               { role: "HQ_ADMIN" },
-              {
-                role: "STAFF",
-                ...(req.user.role === "BRANCH_MANAGER"
-                  ? { branch: branchWhere }
-                  : {}),
-              },
+              { role: "STAFF" },
             ],
           },
           select: { id: true, name: true, role: true, branchId: true },
@@ -65,6 +63,7 @@ exports.metadata = handle(async (req, res) => {
         });
   res.json({
     categories,
+    assignmentBranches,
     assignees,
     zones: [...new Set(branches.map(zoneOf))],
     branches: branches.map((b) => ({ ...b, zone: zoneOf(b) })),
@@ -204,7 +203,8 @@ exports.update = handle(async (req, res) => {
       branchId !== undefined ||
       escalateToHq !== undefined ||
       !["IN_PROGRESS", "WAITING", "RESOLVED"].includes(status) ||
-      completed(ticket))
+      completed(ticket) ||
+      (ticket.assigneeId && ticket.assigneeId !== user.id))
   )
     return res
       .status(403)
@@ -263,37 +263,37 @@ exports.update = handle(async (req, res) => {
     if (!branch) fail("Unknown site");
     if (
       user.role === "BRANCH_MANAGER" &&
-      branch.id !== user.branchId
+      branch.id !== user.branchId && branch.id !== ticket.branchId
     )
       return res
         .status(403)
         .json({ message: "Site is outside your assigned access" });
     data.branchId = branchId;
-    if (branchId !== ticket.branchId) data.assigneeId = null;
+    if (branchId !== ticket.branchId) { data.assigneeId = null; data.escalatedAt = null; }
   }
   if (assigneeId !== undefined) {
+    data.escalatedAt = null;
     if (assigneeId) {
       const assignee = await prisma.user.findFirst({
         where: {
           id: assigneeId,
+          accessEnabled: true,
           OR: [
             { role: "HQ_ADMIN" },
-            {
-              role: "STAFF",
-              branchId: data.branchId || ticket.branchId,
-            },
+            { role: "STAFF" },
           ],
         },
       });
       if (!assignee)
-        fail("Assignee must be an eligible technician at this site or HQ");
+        fail("Assignee must be an active technician or HQ account");
+      if (assignee.role === "HQ_ADMIN") data.escalatedAt = ticket.escalatedAt || now;
     }
     data.assigneeId = assigneeId || null;
   }
   if (escalateToHq !== undefined) {
     if (escalateToHq !== true) fail("Invalid escalation");
     const hq = await prisma.user.findFirst({
-      where: { role: "HQ_ADMIN" },
+      where: { role: "HQ_ADMIN", accessEnabled: true },
       orderBy: { createdAt: "asc" },
     });
     if (!hq) fail("No HQ account is available for escalation");
@@ -336,4 +336,21 @@ exports.comment = handle(async (req, res) => {
       include: { author: { select: { name: true, role: true } } },
     }),
   );
+});
+
+// Current assignments are independent of reporting dates and dashboard filters.
+exports.assignments = handle(async (req, res) => {
+  const tickets = await prisma.ticket.findMany({
+    where: { assigneeId: req.user.id, status: { notIn: ["RESOLVED", "CLOSED"] } },
+    include,
+    orderBy: { updatedAt: "desc" },
+  });
+  res.json(tickets.map((ticket) => sanitize(ticket, req.user)));
+});
+exports.deleteAll = handle(async (req, res) => {
+  if (req.user.role !== "OPERATOR") return res.status(403).json({ message: "Only operators can delete ticket data" });
+  if (req.body?.confirmation !== "DELETE ALL TICKETS") fail("Type DELETE ALL TICKETS to confirm");
+  // Comments cascade with their ticket in the same database statement.
+  const result = await prisma.ticket.deleteMany({});
+  res.json({ count: result.count, message: `${result.count} tickets and their comments deleted` });
 });

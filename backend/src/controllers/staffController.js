@@ -74,8 +74,6 @@ async function validateStaff(row, actor, branches, editing = false) {
   const zone = String(row.region || row.zone || zoneOf(branch)).trim();
   if (!zones.includes(zone) || zone !== zoneOf(branch))
     fail("Region must match the site");
-  if (actor.role === "BRANCH_MANAGER" && branch.id !== actor.branchId)
-    throw Object.assign(new Error("Technicians must remain at your assigned site"), { status: 403 });
   return {
     ...identity,
     role,
@@ -202,17 +200,33 @@ module.exports.staffScope = staffScope;
 exports.technicians = handle(async (req, res) => {
   if (req.user.role !== "BRANCH_MANAGER" || !req.user.branchId)
     return res.status(403).json({ message: "A configured site manager is required" });
-  res.json(await prisma.user.findMany({ where: { role: "STAFF", OR: [{ branchId: null }, { branchId: { not: req.user.branchId } }] }, select, orderBy: { name: "asc" } }));
+  res.json(await prisma.user.findMany({ where: { role: "STAFF" }, select, orderBy: { name: "asc" } }));
 });
 exports.assignTechnician = handle(async (req, res) => {
   if (req.user.role !== "BRANCH_MANAGER" || !req.user.branchId)
     return res.status(403).json({ message: "A configured site manager is required" });
-  const site = await prisma.branch.findUnique({ where: { id: req.user.branchId } });
-  if (!site) fail("Your site is not configured");
+  if (typeof req.body.branchId !== "string" || !req.body.branchId) fail("Choose a destination site");
+  const site = await prisma.branch.findUnique({ where: { id: req.body.branchId } });
+  if (!site) fail("Unknown destination site");
   if (typeof req.body.technicianId !== "string") fail("Choose an existing technician");
   const target = await prisma.user.findFirst({ where: { id: req.body.technicianId, role: "STAFF" } });
   if (!target) return res.status(404).json({ message: "Technician not found" });
   const result = await prisma.user.updateMany({ where: { id: target.id, role: "STAFF", branchId: target.branchId }, data: { branchId: site.id, zone: zoneOf(site) } });
   if (!result.count) return res.status(409).json({ message: "Assignment changed. Refresh and retry" });
   res.json(await prisma.user.findUnique({ where: { id: target.id }, select }));
+});
+
+exports.remove = handle(async (req, res) => {
+  requireOperator(req.user);
+  if (req.params.id === req.user.id) return res.status(403).json({ message: "You cannot delete your own operator account" });
+  if (req.body?.confirmation !== "DELETE USER") fail("Type DELETE USER to confirm");
+  await prisma.$transaction(async (tx) => {
+    const target = await tx.user.findUnique({ where: { id: req.params.id } });
+    if (!target) throw Object.assign(new Error("User not found"), { status: 404 });
+    if (target.role === "OPERATOR") throw Object.assign(new Error("Operator accounts cannot be deleted here"), { status: 403 });
+    await tx.ticket.updateMany({ where: { assigneeId: target.id }, data: { assigneeId: null, escalatedAt: null } });
+    // Nullable relations retain ticket and comment history after account deletion.
+    await tx.user.delete({ where: { id: target.id } });
+  });
+  res.json({ message: "User deleted. Ticket and comment history retained." });
 });
