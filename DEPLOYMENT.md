@@ -144,3 +144,40 @@ tickets requires the exact phrase `DELETE ALL TICKETS`; deleting a selected user
 requires `DELETE USER`. Both endpoints verify the current database role. The ticket
 reset removes every ticket and its comments across all dates/sites, retaining users
 and sites. No deletion is performed by deployment itself.
+
+
+## October 13: Supabase RLS and Render startup safety
+
+The production Docker container now starts with `node start.js` **without**
+running `prisma db push` or `node seed.js` on every restart. On an existing
+project, ensure the database schema has already been prepared before deploying.
+For a new installation or a deliberate schema change, perform a reviewed schema
+operation separately using the appropriate administrative database connection,
+after taking a backup. Running `db push` on production can change schema; review
+the diff first. Run `node backend/seed.js` only when expressly provisioning
+sites or the operator account. Do not set `SEED_DEMO_DATA=true` in production.
+
+**Supabase Security Advisor**: The browser uses the Express API and its own
+JWT/roles; it does not use Supabase Auth or direct table access. Execute
+`backend/prisma/upgrades/20261013_secure_public_tables.sql` in the correct
+Supabase project's SQL Editor to enable RLS on Branch, User, Operator, Ticket
+and TicketComment, and revoke direct table privileges from `anon` and
+`authenticated`. This SQL is **not** auto-applied from a Git commit.
+There are intentionally no Supabase Data API policies for these tables.
+Check the Advisor again after running SQL; confirm application login,
+ticket creation and operator functions still work. Backend connections using
+the database table-owner role normally bypass RLS. If using a restricted
+database user or FORCE ROW LEVEL SECURITY, validate access first.
+
+**Connection exhaustion:** Supabase's session-mode pool may enforce a hard
+client limit. Set a small Prisma `connection_limit` in the existing Render
+`DATABASE_URL` (for example `?connection_limit=3`, or
+`&connection_limit=3` if it already contains query parameters). Never commit
+the actual connection URL/password. Monitor pool usage; each running process
+has its own Prisma pool. Consider a separately configured transaction-pooling
+URL only after testing Prisma compatibility and migration connectivity.
+
+**Verification:** after deploying check `/ready`, normal authenticated
+ticket flows, and Render logs. Security Advisor's findings are resolved only
+after running the SQL against the live Supabase database; a code change alone
+does not enable production RLS.
