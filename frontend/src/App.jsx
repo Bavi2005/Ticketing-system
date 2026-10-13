@@ -611,6 +611,10 @@ export default function App() {
                       ) : manager && page === "overview" ? (
                         <>
                           {operator && <OperatorControlCenter api={api} headers={headers} summary={data.summary} manage={() => navigate("users")} />}
+                          <div className="dashboard-health-panel" aria-label="Ticket health">
+                            <SlaHealth summary={data.summary} />
+                            <SlaHealth summary={data.summary} resolution />
+                          </div>
                           <div className="metric-cards">
                             {metrics.map(([key, name, Icon, tone]) => (
                               <button
@@ -633,10 +637,6 @@ export default function App() {
                                 </small>
                               </button>
                             ))}
-                          </div>
-                          <div className="dashboard-health-panel" aria-label="Ticket health">
-                            <SlaHealth summary={data.summary} />
-                            <SlaHealth summary={data.summary} resolution />
                           </div>
                         </>
                       ) : manager && page === "tickets" ? (

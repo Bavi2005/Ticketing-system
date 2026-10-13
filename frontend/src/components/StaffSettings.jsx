@@ -15,6 +15,7 @@ function AccessDialog({ children, title, close }) {
 
 export default function StaffSettings({ api, headers, user, metadata }) {
   const operator = user.role === "OPERATOR", siteManager = user.role === "BRANCH_MANAGER";
+  const canCreate = ["OPERATOR", "HQ_ADMIN", "BRANCH_MANAGER"].includes(user.role);
   const [staff, setStaff] = useState([]), [search, setSearch] = useState("");
   const [editor, setEditor] = useState(null), [form, setForm] = useState(blank);
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState(""), [modalError, setModalError] = useState(""), [notice, setNotice] = useState("");
@@ -31,7 +32,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
   useEffect(() => { load(); }, [load]);
   const open = (account) => {
     setModalError(""); setNotice("");
-    setForm(account ? { ...blank, ...account, password: "", site_code: account.branch?.code || "", region: account.zone || account.branch?.zone || "" } : blank);
+    setForm(account ? { ...blank, ...account, password: "", site_code: account.branch?.code || "", region: account.zone || account.branch?.zone || "" } : { ...blank, site_code: siteManager ? sites.find((site) => site.id === user.branchId)?.code || "" : "", region: siteManager ? sites.find((site) => site.id === user.branchId)?.zone || "" : "" });
     setEditor(account ? { mode: "edit", id: account.id } : { mode: "create" });
   };
   const update = (key, value) => setForm((old) => ({ ...old, [key]: value,
@@ -50,8 +51,8 @@ export default function StaffSettings({ api, headers, user, metadata }) {
     finally { setBusy(false); }
   };
   const downloadTemplate = () => {
-    const first = sites[0];
-    const text = `name,email,password,role,site_code,region\r\nExample Technician,tech@example.com,ReplaceWithUniquePassword,STAFF,${first?.code || "BR1"},${first?.zone || "SOUTHERN"}\r\nHQ Lead,hq@example.com,ReplaceWithUniquePassword,HQ_ADMIN,,\r\n`;
+    const first = sites.find((site) => site.id === user.branchId) || sites[0];
+    const text = `name,email,password,role,site_code,region\r\nExample Technician,tech@example.com,ReplaceWithUniquePassword,STAFF,${first?.code || "BR1"},${first?.zone || "SOUTHERN"}\r\n${!siteManager ? `Example Manager,manager@example.com,ReplaceWithUniquePassword,BRANCH_MANAGER,${first?.code || "BR1"},${first?.zone || "SOUTHERN"}\r\n` : ""}${operator ? "HQ Lead,hq@example.com,ReplaceWithUniquePassword,HQ_ADMIN,,\r\n" : ""}`;
     const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = "account-import.csv"; a.click(); URL.revokeObjectURL(url);
   };
   const importCsv = async (previewOnly) => {
@@ -79,9 +80,9 @@ export default function StaffSettings({ api, headers, user, metadata }) {
     {error && <div className="error" role="alert">{error}<button className="secondary" onClick={load}>Retry</button></div>}
     {notice && <div className="notice" role="status">{notice}</div>}
     <section className="panel access-list-panel">
-      <div className="access-list-head"><div><span className="operator-kicker"><ShieldCheck size={15}/> ACCESS CONTROL</span><h2>Account access <small>({staff.length})</small></h2><p className="muted">{siteManager ? "Manage your technicians or send any existing technician to any site." : operator ? "Register accounts and manage HQ, site manager, and technician access." : "Manage technician and site manager access across all sites."}</p></div>
+      <div className="access-list-head"><div><span className="operator-kicker"><ShieldCheck size={15}/> ACCESS CONTROL</span><h2>Account access <small>({staff.length})</small></h2><p className="muted">{siteManager ? "Register technicians manually or by CSV, manage your technicians, or assign existing technicians to a site." : operator ? "Register accounts and manage HQ, site manager, and technician access." : "Register technicians and site managers manually or by CSV, and manage access across all sites."}</p></div>
         {siteManager && <button className="primary" onClick={openAssign}><Plus size={16}/> Assign technician to a site</button>}
-        {operator && <div className="staff-actions"><button className="secondary" onClick={() => { setEditor({ mode: "bulk" }); setModalError(""); setCsvErrors([]); }}><Upload size={16}/> Bulk import</button><button className="primary" onClick={() => open(null)}><Plus size={16}/> New staff</button></div>}
+        {canCreate && <div className="staff-actions"><button className="secondary" onClick={() => { setEditor({ mode: "bulk" }); setModalError(""); setCsvErrors([]); setCsv(""); setPreview(null); }}><Upload size={16}/> Bulk import</button><button className="primary" onClick={() => open(null)}><Plus size={16}/> New staff</button></div>}
       </div>
       <label className="access-search"><Search size={17}/><input aria-label="Search accounts" placeholder="Search name, email, role or site" value={search} onChange={(e) => setSearch(e.target.value)}/></label>
       <div className="staff-table-scroll"><table><thead><tr><th>Account</th><th>Access level</th><th>Region</th><th>Site</th><th>Login access</th><th>Actions</th></tr></thead><tbody>{visible.map((account) => <tr key={account.id}>
@@ -102,13 +103,13 @@ export default function StaffSettings({ api, headers, user, metadata }) {
         setPreview(null); setModalError(""); setCsvErrors([]); setCsv(""); const file = e.target.files[0]; if (!file) return;
         if (file.size > 512000 || !/\.csv$/i.test(file.name)) { setModalError("Choose a CSV file under 500 KB."); return; }
         try { setCsv(await file.text()); } catch { setModalError("Unable to read CSV"); }
-      }}/></label><p className="muted">Roles: STAFF, BRANCH_MANAGER, HQ_ADMIN. HQ leaves site and region empty.</p>
+      }}/></label><p className="muted">{siteManager ? "Role: STAFF (Technician) only." : operator ? "Roles: STAFF, BRANCH_MANAGER, HQ_ADMIN. HQ leaves site and region empty." : "Roles: STAFF (Technician), BRANCH_MANAGER (Site manager)."}</p>
         {csvErrors.length > 0 && <ul className="csv-errors">{csvErrors.map((e, i) => <li key={i}>Row {e.row}: {e.message}</li>)}</ul>}
         <button className="secondary" disabled={busy || !csv} onClick={() => importCsv(true)}>Validate & preview</button>
         {preview && <><div className="staff-table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Region</th></tr></thead><tbody>{preview.staff.map((item) => <tr key={item.email}><td>{item.name}</td><td>{item.email}</td><td>{roleName(item.role)}</td><td>{item.zone || "All regions"}</td></tr>)}</tbody></table></div><button className="primary" disabled={busy} onClick={() => importCsv(false)}>Register {preview.count} accounts</button></>}
       </div> : <form onSubmit={submit} className="access-editor">
         <div className="two"><label>Full name<input required minLength={2} maxLength={120} value={form.name} onChange={(e) => update("name", e.target.value)}/></label><label>Login email<input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)}/></label></div>
-        {operator && <label>{editor.mode === "create" ? "Initial password" : "Reset password (optional)"}<input type="password" autoComplete="new-password" required={editor.mode === "create"} minLength={12} value={form.password} onChange={(e) => update("password", e.target.value)}/><small>12 or more characters. Leave empty to keep an existing password.</small></label>}
+        {(operator || editor.mode === "create") && <label>{editor.mode === "create" ? "Initial password" : "Reset password (optional)"}<input type="password" autoComplete="new-password" required={editor.mode === "create"} minLength={12} value={form.password} onChange={(e) => update("password", e.target.value)}/><small>12 or more characters. Leave empty to keep an existing password.</small></label>}
         <label>Access level<select disabled={siteManager} value={form.role} onChange={(e) => update("role", e.target.value)}><option value="STAFF">Technician</option>{!siteManager && <option value="BRANCH_MANAGER">Site manager</option>}{operator && <option value="HQ_ADMIN">HQ administrator</option>}</select></label>
         {form.role !== "HQ_ADMIN" && <div className="two"><label>Region<select required value={form.region} onChange={(e) => update("region", e.target.value)}><option value="">Choose region</option>{[...new Set(sites.map((site) => site.zone))].map((region) => <option key={region} value={region}>{region === "EC" ? "East Coast (EC)" : region}</option>)}</select></label><label>Site<select required value={form.site_code} onChange={(e) => update("site_code", e.target.value)}><option value="">Choose site</option>{sites.filter((site) => !form.region || site.zone === form.region).map((site) => <option key={site.id} value={site.code}>{site.name}</option>)}</select></label></div>}
         {editor.mode === "edit" && <label className="access-toggle"><input type="checkbox" checked={form.accessEnabled !== false} onChange={(e) => update("accessEnabled", e.target.checked)}/><span>Give login access<small>Disabling access prevents sign-in and stops existing sessions.</small></span></label>}
