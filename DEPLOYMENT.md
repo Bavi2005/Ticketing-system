@@ -130,9 +130,9 @@ will run the Docker schema setup when this change reaches their deployed branch.
 
 ### October 11 workflow and data controls
 
-Startup `prisma db push` makes `Ticket.requesterId` and `TicketComment.authorId`
-nullable with `ON DELETE SET NULL`. Apply this schema before starting the updated
-API if deploying outside Docker. Account deletion preserves ticket/comment history;
+Apply `backend/prisma/upgrades/20261013_user_deletion_history.sql` to existing
+databases to make `Ticket.requesterId` and `TicketComment.authorId` nullable with
+`ON DELETE SET NULL`. Docker startup no longer updates the schema. Account deletion preserves ticket/comment history;
 the UI labels removed authors as “Deleted user”. Assigned tickets become unassigned.
 Operators cannot delete themselves or other operator accounts through these controls.
 
@@ -183,3 +183,30 @@ URL only after testing Prisma compatibility and migration connectivity.
 ticket flows, and Render logs. Security Advisor's findings are resolved only
 after running the SQL against the live Supabase database; a code change alone
 does not enable production RLS.
+
+
+## Fix account deletion blocked by existing ticket/comment history
+
+A deployment does not apply database upgrades. Older databases have required
+`Ticket.requesterId` / `TicketComment.authorId` fields and `ON DELETE RESTRICT`
+foreign keys. Deleting an author then fails even though the UI confirmation is
+correct. A Prisma schema edit alone does not change those live constraints.
+
+In the correct Supabase project's **SQL Editor**, run the contents of
+`backend/prisma/upgrades/20261013_user_deletion_history.sql` using the database
+owner role, or use the owner's direct database connection:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/prisma/upgrades/20261013_user_deletion_history.sql
+```
+
+This transactional, repeatable upgrade deletes no data and does not change RLS,
+passwords, roles, or account access. It changes only two history columns and their
+foreign keys. After it succeeds, reopen Delete users, select the intended accounts,
+and confirm again. A lock timeout rolls back the upgrade; retry during a quiet
+period. Do not work around this by deleting ticket history or disabling RLS.
+
+The API also permits up to 30 seconds for the deletion transaction and reports
+relationship errors or transaction conflicts as actionable 409 responses instead
+of a generic production 500. A relationship error can have another cause: if it
+persists after the upgrade, inspect the server logs and live database constraints.

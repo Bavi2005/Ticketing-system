@@ -410,3 +410,21 @@ test("operator can delete a single selected user through the bulk route", async 
   expect(response.status).toBe(200);
   expect(response.body.count).toBe(1);
 });
+
+test.each(["P2003", "P2011"])("deletion reports actionable database upgrade guidance for %s", async (code) => {
+  prisma.$transaction.mockRejectedValue(Object.assign(new Error("private database details"), { code }));
+  for (const [path, payload] of [["/staff", bulkDelete], ["/staff/tech1", { confirmation: "DELETE USER" }]]) {
+    const response = await request(app).delete(path).send(payload);
+    expect(response.status).toBe(409);
+    expect(response.body.message).toContain("20261013_user_deletion_history.sql");
+    expect(response.body.message).toContain("No users were deleted");
+    expect(response.body.message).not.toContain("private database details");
+  }
+});
+test.each(["P2028", "P2034"])("deletion reports retry guidance for transaction failure %s", async (code) => {
+  prisma.$transaction.mockRejectedValue(Object.assign(new Error("private database details"), { code }));
+  const response = await request(app).delete("/staff").send(bulkDelete);
+  expect(response.status).toBe(409);
+  expect(response.body.message).toContain("Please retry");
+  expect(prisma.$transaction.mock.lastCall[1]).toEqual({ maxWait: 10000, timeout: 30000 });
+});
