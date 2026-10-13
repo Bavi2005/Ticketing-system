@@ -10,6 +10,7 @@ jest.mock("../src/utils/prisma", () => ({
     updateMany: jest.fn(),
     findUnique: jest.fn(),
     delete: jest.fn(),
+    deleteMany: jest.fn(),
   },
   ticket: { updateMany: jest.fn() },
   operator: { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() },
@@ -38,6 +39,7 @@ app.post("/import", c.importCsv);
 app.post("/staff", c.create);
 app.patch("/staff/:id", c.update);
 app.delete("/staff/:id", c.remove);
+app.delete("/staff", c.removeMany);
 app.get("/staff", c.list);
 app.get("/technicians", c.technicians);
 app.post("/assign", c.assignTechnician);
@@ -353,4 +355,58 @@ test("delete route rejects forged operator JWT claims", async () => {
     expect((await request(routedApp).delete("/staff/tech1").set("Authorization", `Bearer ${fake}`).send({ confirmation: "DELETE USER" })).status).toBe(403);
   }
   expect(prisma.user.delete).not.toHaveBeenCalled();
+});
+
+const bulkDelete = { userIds: ["tech1", "manager1"], confirmation: "DELETE USERS" };
+test("operator bulk deletion deduplicates IDs and preserves history in one transaction", async () => {
+  prisma.user.findMany.mockResolvedValue([{ id: "tech1", role: "STAFF" }, { id: "manager1", role: "BRANCH_MANAGER" }]);
+  prisma.user.deleteMany.mockResolvedValue({ count: 2 });
+  const result = await request(app).delete("/staff").send({ ...bulkDelete, userIds: [...bulkDelete.userIds, "tech1"] });
+  expect(result.status).toBe(200);
+  expect(result.body.count).toBe(2);
+  expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  expect(prisma.ticket.updateMany).toHaveBeenCalledWith({ where: { assigneeId: { in: bulkDelete.userIds } }, data: { assigneeId: null, escalatedAt: null } });
+  expect(prisma.user.deleteMany).toHaveBeenCalledWith({ where: { id: { in: bulkDelete.userIds }, role: { not: "OPERATOR" } } });
+});
+test("bulk deletion requires a nonempty ID list and explicit confirmation", async () => {
+  for (const body of [{}, { ...bulkDelete, confirmation: "DELETE USER" }, ...[[], "all", [null], [""], [12]].map(userIds => ({ ...bulkDelete, userIds }))]) {
+    expect((await request(app).delete("/staff").send(body)).status).toBe(400);
+  }
+  expect(prisma.$transaction).not.toHaveBeenCalled();
+});
+test("a protected or missing user blocks the entire batch before writes", async () => {
+  expect((await request(app).delete("/staff").send({ ...bulkDelete, userIds: ["actor", "tech1"] })).status).toBe(403);
+  prisma.user.findMany.mockResolvedValue([{ id: "tech1", role: "STAFF" }, { id: "manager1", role: "OPERATOR" }]);
+  expect((await request(app).delete("/staff").send(bulkDelete)).status).toBe(403);
+  prisma.user.findMany.mockResolvedValue([{ id: "tech1", role: "STAFF" }]);
+  expect((await request(app).delete("/staff").send(bulkDelete)).status).toBe(409);
+  expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
+  expect(prisma.user.deleteMany).not.toHaveBeenCalled();
+});
+test("a concurrent account change throws inside the transaction to roll back the batch", async () => {
+  prisma.user.findMany.mockResolvedValue([{ id: "tech1", role: "STAFF" }, { id: "manager1", role: "BRANCH_MANAGER" }]);
+  prisma.user.deleteMany.mockResolvedValue({ count: 1 });
+  let transactionRejected = false;
+  prisma.$transaction.mockImplementation(async fn => { try { return await fn(prisma); } catch (error) { transactionRejected = true; throw error; } });
+  expect((await request(app).delete("/staff").send(bulkDelete)).status).toBe(409);
+  expect(transactionRejected).toBe(true);
+});
+test("bulk delete route rejects missing login and forged operator JWT claims", async () => {
+  expect((await request(routedApp).delete("/staff").send(bulkDelete)).status).toBe(401);
+  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
+    prisma.user.findUnique.mockResolvedValue({ id: "actor", role });
+    const fake = jwt.sign({ userId: "actor", role: "OPERATOR" }, process.env.JWT_SECRET);
+    expect((await request(routedApp).delete("/staff").set("Authorization", `Bearer ${fake}`).send(bulkDelete)).status).toBe(403);
+  }
+  expect(prisma.$transaction).not.toHaveBeenCalled();
+});
+test("operator can delete a single selected user through the bulk route", async () => {
+  prisma.user.findUnique.mockResolvedValue({ id: "actor", role: "OPERATOR" });
+  prisma.user.findMany.mockResolvedValue([{ id: "tech1", role: "STAFF" }]);
+  prisma.user.deleteMany.mockResolvedValue({ count: 1 });
+  const isolatedApp = express(); isolatedApp.set("trust proxy", 1); isolatedApp.use(express.json());
+  isolatedApp.use("/staff", require("../src/routes/staffRoutes")); isolatedApp.use(require("../src/middleware/errorHandler"));
+  const response = await request(isolatedApp).delete("/staff").set("X-Forwarded-For", "192.0.2.20").set("Authorization", bearer()).send({ ...bulkDelete, userIds: ["tech1"] });
+  expect(response.status).toBe(200);
+  expect(response.body.count).toBe(1);
 });

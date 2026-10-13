@@ -3985,3 +3985,10 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
   .login-story > div > p:not(.eyebrow) { font-size: 13px; margin-top: 8px; }
   .login-form { padding: 20px 16px 26px; }
 }
+
+.bulk-user-picker { display: grid; gap: 12px; min-width: 0; }
+.bulk-user-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; }
+.bulk-user-list .bulk-user-option { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.bulk-user-option input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 20px; }
+.bulk-user-option span { min-width: 0; overflow-wrap: anywhere; }
+.bulk-user-option small { display: block; margin-top: 4px; color: var(--text-muted); }
