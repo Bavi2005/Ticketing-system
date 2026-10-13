@@ -79,11 +79,13 @@ name. There is no default operator password. For a running environment, run
 Use the shared login page, then open **Access control** to
 create HQ, manager, and technician credentials or edit their role/region/site.
 HQ can edit technician and site manager access; site managers can edit their own
-technicians and assign existing technicians to their site. Only operators register
-new accounts or bulk-import credentials. The API enforces this rule from the
-database role, irrespective of client controls or JWT role claims.
+technicians and assign existing technicians to any site. Operators, HQ, and site
+managers can register accounts manually or bulk-import CSV credentials. HQ can create technicians and site managers; site managers can
+create technicians only. Only operators can create HQ accounts or reset passwords.
+The API enforces these rules from the database role, irrespective of client controls
+or JWT role claims.
 
-Download the CSV template in Access control. Use HQ_ADMIN / HQ,
+Download the role-specific CSV template in Access control. Supported roles are HQ_ADMIN / HQ,
 BRANCH_MANAGER / SM, or STAFF / SU. HQ rows leave site and region empty; other
 rows use a valid site code and matching region. Uploads accept UTF-8 CSV under
 500 KB with up to 500 accounts. Use **Validate & preview** before importing.

@@ -26,7 +26,8 @@ app.use((req, res, next) => {
   req.user = {
     id: "actor",
     role: req.headers["x-role"] || "OPERATOR",
-    ownedOperator: { id: "op1" },
+    ownedOperator: req.headers["x-role"] ? null : { id: "op1" },
+    operatorId: "op1",
     branchId: "br1",
     zone: "CENTRAL",
     branch: { name: "Pahang", zone: "CENTRAL" },
@@ -110,13 +111,45 @@ test("invalid rows, duplicate emails and existing accounts result in zero writes
   expect((await request(app).post("/import").send({ csv })).status).toBe(400);
   expect(prisma.$transaction).not.toHaveBeenCalled();
 });
-test("HQ and site managers can list access but only operators can create accounts", async () => {
-  for (const role of ["HQ_ADMIN", "BRANCH_MANAGER"]) {
-    expect((await request(app).get("/staff").set("x-role", role)).status).toBe(200);
-    expect((await request(app).post("/staff").set("x-role", role).send({})).status).toBe(403);
-    expect((await request(app).post("/import").set("x-role", role).send({ csv })).status).toBe(403);
+const account = { name: "Alice", email: "alice@example.com", password: "A-unique-password", role: "STAFF", site_code: "BR1", region: "CENTRAL" };
+test.each(["HQ_ADMIN", "BRANCH_MANAGER"])("%s can manually create and bulk-import technicians with inherited ownership", async (role) => {
+  prisma.user.create.mockResolvedValue({ id: "new", role: "STAFF" });
+  expect((await request(app).get("/staff").set("x-role", role)).status).toBe(200);
+  expect((await request(app).post("/staff").set("x-role", role).send({ ...account, operatorId: "forged" })).status).toBe(201);
+  expect(prisma.user.create.mock.lastCall[0].data).toMatchObject({ role: "STAFF", operatorId: "op1" });
+  expect(await bcrypt.compare(account.password, prisma.user.create.mock.lastCall[0].data.passwordHash)).toBe(true);
+  const preview = await request(app).post("/import").set("x-role", role).send({ csv, preview: true });
+  expect(preview.status).toBe(200);
+  expect(JSON.stringify(preview.body)).not.toContain(account.password);
+  expect((await request(app).post("/import").set("x-role", role).send({ csv })).status).toBe(201);
+  expect(prisma.user.createMany.mock.lastCall[0].data[0]).toMatchObject({ role: "STAFF", operatorId: "op1" });
+});
+test("HQ can create branch managers manually and through CSV", async () => {
+  prisma.user.create.mockResolvedValue({ id: "new", role: "BRANCH_MANAGER" });
+  expect((await request(app).post("/staff").set("x-role", "HQ_ADMIN").send({ ...account, role: "SM" })).status).toBe(201);
+  expect(prisma.user.create.mock.lastCall[0].data.role).toBe("BRANCH_MANAGER");
+  expect((await request(app).post("/import").set("x-role", "HQ_ADMIN").send({ csv: csv.replace(",SU,", ",SM,") })).status).toBe(201);
+  expect(prisma.user.createMany.mock.lastCall[0].data[0].role).toBe("BRANCH_MANAGER");
+});
+test.each([
+  ["HQ_ADMIN", "HQ_ADMIN"], ["HQ_ADMIN", "HQ"], ["HQ_ADMIN", "OPERATOR"],
+  ["BRANCH_MANAGER", "BRANCH_MANAGER"], ["BRANCH_MANAGER", "SM"],
+  ["BRANCH_MANAGER", "HQ_ADMIN"], ["BRANCH_MANAGER", "HQ"], ["BRANCH_MANAGER", "OPERATOR"],
+])("%s cannot grant %s through manual creation, preview or mixed import", async (actor, role) => {
+  expect((await request(app).post("/staff").set("x-role", actor).send({ ...account, role })).status).toBeGreaterThanOrEqual(400);
+  const mixed = csv + `Other,other@example.com,A-unique-password,${role},BR1,CENTRAL\r\n`;
+  for (const preview of [true, false]) {
+    const result = await request(app).post("/import").set("x-role", actor).send({ csv: mixed, preview });
+    expect(result.status).toBe(400);
+    expect(result.body.errors[0].row).toBe(3);
   }
+  expect(prisma.user.create).not.toHaveBeenCalled();
+  expect(prisma.$transaction).not.toHaveBeenCalled();
+});
+test("technicians cannot administer accounts", async () => {
   expect((await request(app).get("/staff").set("x-role", "STAFF")).status).toBe(403);
+  expect((await request(app).post("/staff").set("x-role", "STAFF").send(account)).status).toBe(403);
+  expect((await request(app).post("/import").set("x-role", "STAFF").send({ csv })).status).toBe(403);
   expect(prisma.user.create).not.toHaveBeenCalled();
   expect(prisma.$transaction).not.toHaveBeenCalled();
 });
@@ -204,13 +237,25 @@ test("route guards enforce current DB roles instead of JWT role claims", async (
   const fake = jwt.sign({ userId: "actor", role: "OPERATOR" }, process.env.JWT_SECRET);
   for (const role of ["HQ_ADMIN", "BRANCH_MANAGER", "STAFF"]) {
     prisma.user.findUnique.mockResolvedValue({ id: "actor", role, branchId: "br1" });
-    for (const path of ["/staff", "/staff/import"]) {
-      expect((await request(routedApp).post(path).set("Authorization", `Bearer ${fake}`).send({})).status).toBe(403);
-    }
-    expect((await request(routedApp).get("/staff").set("Authorization", bearer())).status).toBe(role === "STAFF" ? 403 : 200);
+    expect((await request(routedApp).post("/staff").set("Authorization", `Bearer ${fake}`).send({ ...account, role: "HQ_ADMIN" })).status).toBe(403);
+    expect((await request(routedApp).post("/staff/import").set("Authorization", `Bearer ${fake}`).send({ csv: csv.replace(",SU,", ",HQ_ADMIN,") })).status).toBe(role === "STAFF" ? 403 : 400);
   }
   expect(prisma.user.create).not.toHaveBeenCalled();
   expect(prisma.$transaction).not.toHaveBeenCalled();
+});
+test.each(["HQ_ADMIN", "BRANCH_MANAGER"])("actual routes allow %s staff creation and CSV import", async (role) => {
+  prisma.user.findUnique.mockResolvedValue({ id: "actor", role, branchId: "br1", operatorId: "op1" });
+  prisma.user.create.mockResolvedValue({ id: "new", role: "STAFF" });
+  // Each actor uses a separate address so these authorization tests do not exhaust the shared import limiter.
+  const isolatedApp = express();
+  isolatedApp.set("trust proxy", 1);
+  isolatedApp.use(express.json());
+  isolatedApp.use("/staff", require("../src/routes/staffRoutes"));
+  isolatedApp.use(require("../src/middleware/errorHandler"));
+  const ip = role === "HQ_ADMIN" ? "192.0.2.10" : "192.0.2.11";
+  expect((await request(isolatedApp).post("/staff").set("X-Forwarded-For", ip).set("Authorization", bearer()).send(account)).status).toBe(201);
+  expect((await request(isolatedApp).post("/staff/import").set("X-Forwarded-For", ip).set("Authorization", bearer()).send({ csv, preview: true })).status).toBe(200);
+  expect((await request(isolatedApp).post("/staff/import").set("X-Forwarded-For", ip).set("Authorization", bearer()).send({ csv })).status).toBe(201);
 });
 
 const loginApp = express();

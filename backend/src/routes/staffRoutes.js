@@ -10,7 +10,7 @@ router.use((req, res, next) =>
     : res
         .status(403)
         .json({
-          message: "Credential management is restricted to the operator account",
+          message: "Staff management requires an operator, HQ or site manager account",
         }),
 );
 const importLimit = rateLimit({
@@ -22,8 +22,8 @@ const importLimit = rateLimit({
 router.get("/", c.list);
 router.get("/technicians", c.technicians);
 router.post("/assign-technician", importLimit, c.assignTechnician);
-router.post("/", importLimit, (req, res, next) => req.user.role === "OPERATOR" ? next() : res.status(403).json({ message: "Only operators can create accounts" }), c.create);
-router.post("/import", importLimit, (req, res, next) => req.user.role === "OPERATOR" ? next() : res.status(403).json({ message: "Only operators can bulk-create accounts" }), c.importCsv);
+router.post("/", importLimit, c.create);
+router.post("/import", importLimit, c.importCsv);
 router.patch("/:id", c.update);
 router.delete("/:id", (req, res, next) => req.user.role === "OPERATOR" ? next() : res.status(403).json({ message: "Only operators can delete users" }), importLimit, c.remove);
 module.exports = router;

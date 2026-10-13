@@ -51,7 +51,7 @@ function validateIdentity(row, passwordRequired = true) {
   return { name, email };
 }
 async function validateStaff(row, actor, branches, editing = false) {
-  if (!editing) requireOperator(actor);
+  staffScope(actor);
   const identity = validateIdentity(row, !editing);
   const inputRole = String(row.role || "STAFF")
     .trim()
@@ -63,7 +63,7 @@ async function validateStaff(row, actor, branches, editing = false) {
     throw Object.assign(new Error("HQ can assign technician or site manager access only"), { status: 403 });
   if (actor.role === "BRANCH_MANAGER" && role !== "STAFF")
     throw Object.assign(new Error("Site managers can assign technician access only"), { status: 403 });
-  const operatorId = actor.ownedOperator?.id;
+  const operatorId = actor.role === "OPERATOR" ? actor.ownedOperator?.id : actor.operatorId;
   if (actor.role === "OPERATOR" && !operatorId) fail("Operator account is not configured");
   if (role === "HQ_ADMIN")
     return { ...identity, role, branchId: null, zone: null, operatorId };
@@ -92,7 +92,7 @@ exports.list = handle(async (req, res) => {
   );
 });
 exports.create = handle(async (req, res) => {
-  requireOperator(req.user);
+  staffScope(req.user);
   const branches = await prisma.branch.findMany();
   const data = await validateStaff(req.body, req.user, branches);
   data.passwordHash = await bcrypt.hash(req.body.password, 12);
@@ -147,7 +147,7 @@ exports.update = handle(async (req, res) => {
   res.json(await prisma.user.findUnique({ where: { id: target.id }, select }));
 });
 exports.importCsv = handle(async (req, res) => {
-  requireOperator(req.user);
+  staffScope(req.user);
   const rows = parseStaffCsv(req.body.csv);
   const branches = await prisma.branch.findMany();
   const emails = new Set();
