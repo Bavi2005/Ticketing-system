@@ -3876,3 +3876,61 @@ textarea {
     padding: 10px;
   }
 }
+
+/* Responsive application-shell fit: keep every role workspace within the viewport. */
+html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
+.shell { width: 100%; max-width: 100%; min-width: 0; }
+.shell > .main, .main > .content { min-width: 0; max-width: 100%; }
+.main .content > * { min-width: 0; max-width: 100%; }
+@media (min-width: 701px) {
+  .shell:not(.sidebar-collapsed) {
+    grid-template-columns: clamp(224px, 18.5vw, 264px) minmax(0, 1fr);
+  }
+  .shell.sidebar-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
+  .sidebar, .sidebar-collapsed .sidebar {
+    padding: 18px 12px 14px;
+    max-width: 100%;
+    overflow: visible;
+  }
+  .sidebar-head { gap: 6px; }
+  .sidebar .brand { font-size: clamp(15px, 1.15vw, 17px); min-width: 0; }
+  .sidebar .brand small { font-size: 10px; letter-spacing: 0.2px; }
+  .workspace-label { font-size: 11px; margin: 26px 8px 11px; letter-spacing: 1px; }
+  .sidebar nav { gap: 4px; min-width: 0; }
+  .sidebar nav button {
+    min-width: 0;
+    width: 100%;
+    gap: 9px;
+    padding: 10px 9px;
+    font-size: 14px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+  .sidebar nav button > span:not(.nav-dot) { min-width: 0; overflow-wrap: anywhere; }
+  .sidebar-profile { width: 100%; min-width: 0; }
+  .sidebar-profile > .profile-trigger { min-width: 0; width: 100%; border-radius: 12px; }
+  .sidebar-profile .profile-trigger > span:nth-child(2) { min-width: 0; flex: 1 1 auto; }
+  .sidebar-profile .profile-trigger b { max-width: 100%; font-size: 13px; }
+  .sidebar-profile .profile-trigger small { font-size: 12px; }
+  .sidebar-profile .profile-dropdown { width: 100%; max-width: 100%; }
+  .sidebar-collapsed .sidebar-profile .profile-dropdown { max-width: min(268px, calc(100vw - 96px)); }
+  .content { width: 100%; padding: clamp(14px, 1.6vw, 24px); }
+}
+@media (max-width: 700px) {
+  .sidebar, .sidebar-collapsed .sidebar { width: 100%; min-width: 0; max-width: 100%; }
+  .sidebar-head, .sidebar-head .brand { min-width: 0; }
+  .sidebar-profile { flex: 0 0 auto; }
+  .sidebar-profile .profile-dropdown {
+    position: fixed;
+    inset: 62px 12px auto;
+    width: auto;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 88px);
+    overflow-y: auto;
+  }
+  .sidebar nav, .sidebar-collapsed .sidebar nav { max-width: 100vw; }
+  .sidebar nav button, .sidebar-collapsed .sidebar nav button { min-width: 0; }
+  .sidebar nav button span:not(.nav-dot) { font-size: clamp(10px, 2.7vw, 13px); }
+  .content { width: 100%; padding: 14px 12px; }
+  .metric-cards, .dashboard-layout, .operator-overview-grid { min-width: 0; max-width: 100%; }
+}
