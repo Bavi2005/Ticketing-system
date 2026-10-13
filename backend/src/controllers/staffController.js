@@ -230,3 +230,29 @@ exports.remove = handle(async (req, res) => {
   });
   res.json({ message: "User deleted. Ticket and comment history retained." });
 });
+
+exports.removeMany = handle(async (req, res) => {
+  requireOperator(req.user);
+  if (req.body?.confirmation !== "DELETE USERS") fail("Type DELETE USERS to confirm");
+  const ids = req.body.userIds;
+  if (!Array.isArray(ids) || !ids.length || ids.some((id) => typeof id !== "string" || !id.trim()))
+    fail("Select at least one user to delete");
+  const userIds = [...new Set(ids)];
+  if (userIds.includes(req.user.id))
+    return res.status(403).json({ message: "You cannot delete your own operator account" });
+  const count = await prisma.$transaction(async (tx) => {
+    const targets = await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, role: true } });
+    if (targets.some((target) => target.role === "OPERATOR"))
+      throw Object.assign(new Error("Operator accounts cannot be deleted here"), { status: 403 });
+    if (targets.length !== userIds.length)
+      throw Object.assign(new Error("Some selected users no longer exist. Refresh the list and retry; no users were deleted."), { status: 409 });
+    await tx.ticket.updateMany({ where: { assigneeId: { in: userIds } }, data: { assigneeId: null, escalatedAt: null } });
+    // Existing nullable relations retain ticket and comment authorship history.
+    // Recheck role at deletion time; a concurrent promotion rolls back the entire batch.
+    const result = await tx.user.deleteMany({ where: { id: { in: userIds }, role: { not: "OPERATOR" } } });
+    if (result.count !== userIds.length)
+      throw Object.assign(new Error("Selected accounts changed. Refresh and retry; no users were deleted."), { status: 409 });
+    return result.count;
+  });
+  res.json({ count, message: `${count} user${count === 1 ? "" : "s"} deleted. Ticket and comment history retained.` });
+});
