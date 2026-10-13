@@ -20,6 +20,20 @@ const handle = (fn) => async (req, res, next) => {
     next(e);
   }
 };
+// Keep deletion failures actionable without exposing database internals.
+async function deletionTransaction(fn) {
+  try {
+    return await prisma.$transaction(fn, { maxWait: 10000, timeout: 30000 });
+  } catch (error) {
+    if (["P2003", "P2011"].includes(error.code)) {
+      throw Object.assign(new Error("Deletion blocked by database relationships. No users were deleted. The database administrator should verify the user-deletion history upgrade (20261013_user_deletion_history.sql) has been applied."), { status: 409 });
+    }
+    if (["P2028", "P2034"].includes(error.code)) {
+      throw Object.assign(new Error("Deletion timed out or conflicted with another change. No users were deleted. Please retry, or select fewer users."), { status: 409 });
+    }
+    throw error;
+  }
+}
 function requireOperator(user) {
   if (user.role !== "OPERATOR")
     throw Object.assign(new Error("Credential management is restricted to the operator account"), { status: 403 });
@@ -220,7 +234,7 @@ exports.remove = handle(async (req, res) => {
   requireOperator(req.user);
   if (req.params.id === req.user.id) return res.status(403).json({ message: "You cannot delete your own operator account" });
   if (req.body?.confirmation !== "DELETE USER") fail("Type DELETE USER to confirm");
-  await prisma.$transaction(async (tx) => {
+  await deletionTransaction(async (tx) => {
     const target = await tx.user.findUnique({ where: { id: req.params.id } });
     if (!target) throw Object.assign(new Error("User not found"), { status: 404 });
     if (target.role === "OPERATOR") throw Object.assign(new Error("Operator accounts cannot be deleted here"), { status: 403 });
@@ -240,7 +254,7 @@ exports.removeMany = handle(async (req, res) => {
   const userIds = [...new Set(ids)];
   if (userIds.includes(req.user.id))
     return res.status(403).json({ message: "You cannot delete your own operator account" });
-  const count = await prisma.$transaction(async (tx) => {
+  const count = await deletionTransaction(async (tx) => {
     const targets = await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, role: true } });
     if (targets.some((target) => target.role === "OPERATOR"))
       throw Object.assign(new Error("Operator accounts cannot be deleted here"), { status: 403 });
