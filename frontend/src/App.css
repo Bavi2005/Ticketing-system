@@ -3754,3 +3754,59 @@ textarea {
   .sidebar nav button span:not(.nav-dot) { max-width: 100%; white-space: normal; line-height: 1.25; text-align: center; }
   .shell, .shell.sidebar-collapsed { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
 }
+
+
+/* 2026-10-13: dashboard shell containment and consistent density.
+   Brand text and sidebar controls must never render over the main workspace. */
+@media (min-width: 701px) {
+  .shell:not(.sidebar-collapsed) {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+  .shell.sidebar-collapsed {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .sidebar {
+    min-width: 0;
+    overflow-x: clip;
+    padding: 22px 16px 18px;
+  }
+  .sidebar-head { min-width: 0; gap: 8px; }
+  .sidebar-head .brand { flex: 1 1 0; min-width: 0; }
+  .sidebar-head .brand > div:last-child { min-width: 0; }
+  .sidebar-head .brand-icon { flex: 0 0 36px; }
+  .sidebar-head .sidebar-toggle { flex: 0 0 32px; width: 32px; height: 32px; }
+  .sidebar .brand { gap: 7px; font-size: 18px; letter-spacing: -0.65px; }
+  .sidebar .brand small {
+    font-size: 9px; letter-spacing: 0.35px;
+    line-height: 1.25; white-space: normal; overflow-wrap: anywhere;
+    margin-top: 2px;
+  }
+  .sidebar-collapsed .sidebar .brand { flex: 0 0 auto; }
+  .sidebar-collapsed .sidebar-head .brand-icon { flex-basis: 36px; }
+  .sidebar-collapsed .sidebar-head .sidebar-toggle { display: none; }
+  .content { padding: 26px 28px; width: 100%; min-width: 0; }
+  .page-heading { margin-bottom: 16px; }
+  .page-heading h1 { font-size: clamp(27px, 2.1vw, 36px); line-height: 1.18; }
+  .page-heading .eyebrow { font-size: 11px; letter-spacing: 1.1px; margin-bottom: 8px; }
+  .page-heading .subtitle { font-size: 14px; margin-top: 6px; }
+  .period-toolbar { margin-bottom: 12px; }
+  .operator-command-head h2 { font-size: clamp(23px, 2.1vw, 29px); }
+  .operator-command-head { align-items: center; gap: 14px; }
+  .operator-kicker { font-size: 12px; letter-spacing: 0.08em; }
+  .operator-overview-grid { gap: 12px; }
+  .operator-stat { padding: 15px; }
+}
+@media (min-width: 701px) and (max-width: 1100px) {
+  .shell:not(.sidebar-collapsed) { grid-template-columns: 238px minmax(0, 1fr); }
+  .sidebar .brand { font-size: 16px; }
+  .sidebar .brand small { font-size: 8px; }
+  .content { padding: 20px; }
+}
+@media (max-width: 700px) {
+  .sidebar-head .brand { min-width: 0; }
+  .sidebar-head .brand > div:last-child { min-width: 0; }
+  .sidebar .brand small { font-size: 10px; letter-spacing: .4px; white-space: normal; }
+  .content { min-width: 0; overflow-wrap: break-word; }
+  .page-heading h1 { font-size: clamp(25px, 7vw, 32px); }
+  .operator-command-head h2 { font-size: 24px; }
+}
