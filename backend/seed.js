@@ -9,11 +9,16 @@ const sla = { CRITICAL: [1, 4], HIGH: [4, 12], MEDIUM: [8, 24], LOW: [24, 72] };
 async function main() {
   const staffHash = await bcrypt.hash("password123", 12);
   const adminHash = await bcrypt.hash("admin123", 12);
-  const allBranches = await Promise.all(sites.map((site) => prisma.branch.upsert({
-    where: { code: site.code },
-    update: { name: site.name, location: site.name, zone: site.region },
-    create: { code: site.code, name: site.name, location: site.name, zone: site.region },
-  })));
+  // Keep initial provisioning sequential: Supabase's session pool can be small.
+  const allBranches = [];
+  for (const site of sites) {
+    const branch = await prisma.branch.upsert({
+      where: { code: site.code },
+      update: { name: site.name, location: site.name, zone: site.region },
+      create: { code: site.code, name: site.name, location: site.name, zone: site.region },
+    });
+    allBranches.push(branch);
+  }
   // Existing demo accounts follow the region of their retained site ID.
   for (const site of allBranches)
     await prisma.user.updateMany({ where: { branchId: site.id }, data: { zone: site.zone } });
