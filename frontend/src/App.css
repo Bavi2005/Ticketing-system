@@ -3767,7 +3767,7 @@ textarea {
   }
   .sidebar {
     min-width: 0;
-    overflow-x: clip;
+    overflow: visible;
     padding: 22px 16px 18px;
   }
   .sidebar-head { min-width: 0; gap: 8px; }
@@ -3783,7 +3783,22 @@ textarea {
   }
   .sidebar-collapsed .sidebar .brand { flex: 0 0 auto; }
   .sidebar-collapsed .sidebar-head .brand-icon { flex-basis: 36px; }
-  .sidebar-collapsed .sidebar-head .sidebar-toggle { display: none; }
+  .sidebar-collapsed .sidebar-head .brand { display: none; }
+  .sidebar-collapsed .sidebar-head .sidebar-toggle { display: grid; }
+  .sidebar-profile { min-width: 0; }
+  .sidebar-profile .profile-dropdown {
+    width: 100%;
+    max-width: 100%;
+    left: 0;
+    right: auto;
+    overflow-wrap: anywhere;
+  }
+  .sidebar-profile .profile-card { min-width: 0; }
+  .sidebar-profile .profile-card > div:last-child { min-width: 0; }
+  .sidebar-profile .profile-card b,
+  .sidebar-profile .profile-card small {
+    overflow-wrap: anywhere;
+  }
   .content { padding: 26px 28px; width: 100%; min-width: 0; }
   .page-heading { margin-bottom: 16px; }
   .page-heading h1 { font-size: clamp(27px, 2.1vw, 36px); line-height: 1.18; }
