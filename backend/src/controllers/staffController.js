@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../utils/prisma");
-const { zones, zoneOf, fail } = require("../utils/ticketing");
+const { zones, zoneOf, fail, siteScope, siteIdsOf } = require("../utils/ticketing");
 const { parseStaffCsv } = require("../utils/staffCsv");
 const select = {
   id: true,
@@ -10,6 +10,9 @@ const select = {
   accessEnabled: true,
   zone: true,
   branchId: true,
+  siteIds: true,
+  regionAccess: true,
+  allSites: true,
   operatorId: true,
   branch: true,
 };
@@ -41,7 +44,7 @@ function requireOperator(user) {
 function staffScope(user) {
   if (user.role === "OPERATOR") return { role: { in: ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"] } };
   if (user.role === "HQ_ADMIN") return { role: { in: ["STAFF", "BRANCH_MANAGER"] } };
-  if (user.role === "BRANCH_MANAGER") return { role: "STAFF", branchId: user.branchId || "__NO_SITE__" };
+  if (user.role === "BRANCH_MANAGER") return { role: "STAFF", OR: [{ branch: siteScope(user) }, { siteIds: { hasSome: siteIdsOf(user) } }, { allSites: true }] };
   throw Object.assign(new Error("Access control requires an operator, HQ or site manager account"), { status: 403 });
 }
 function validateIdentity(row, passwordRequired = true) {
@@ -80,21 +83,34 @@ async function validateStaff(row, actor, branches, editing = false) {
   const operatorId = actor.role === "OPERATOR" ? actor.ownedOperator?.id : actor.operatorId;
   if (actor.role === "OPERATOR" && !operatorId) fail("Operator account is not configured");
   if (role === "HQ_ADMIN")
-    return { ...identity, role, branchId: null, zone: null, operatorId };
-  const branch = branches.find(
-    (b) => b.code === String(row.site_code || row.branch_code || "").trim(),
-  );
-  if (!branch) fail("Unknown site code");
-  const zone = String(row.region || row.zone || zoneOf(branch)).trim();
-  if (!zones.includes(zone) || zone !== zoneOf(branch))
-    fail("Region must match the site");
-  return {
-    ...identity,
-    role,
-    branchId: branch.id,
-    zone,
-    operatorId: operatorId || null,
-  };
+    return { ...identity, role, branchId: null, zone: null, siteIds: [], regionAccess: [], allSites: false, operatorId };
+  const access = validateAccess(row, role, branches);
+  return { ...identity, role, ...access, operatorId: operatorId || null };
+}
+function validateAccess(row, role, branches) {
+  if (row.allSites !== undefined && typeof row.allSites !== "boolean") fail("All sites must be enabled or disabled");
+  const allSites = row.allSites === true || String(row.site_code || row.branch_code || "").trim() === "*";
+  if (allSites && role !== "STAFF") fail("All sites is available for technicians only; select manager regions");
+  let selected;
+  if (row.siteIds !== undefined) {
+    if (!Array.isArray(row.siteIds) || row.siteIds.some(id => typeof id !== "string")) fail("Choose valid sites");
+    selected = [...new Set(row.siteIds)].map(id => branches.find(b => b.id === id));
+  } else {
+    const codes = String(row.site_code || row.branch_code || "").split(";").map(v => v.trim()).filter(v => v && v !== "*");
+    selected = codes.map(code => branches.find(b => b.code === code));
+  }
+  if (selected.some(site => !site)) fail("Unknown site code");
+  const requestedRegions = row.regionAccess === undefined
+    ? String(row.region || row.zone || "").split(";").map(v => v.trim()).filter(Boolean)
+    : row.regionAccess;
+  if (!Array.isArray(requestedRegions) || requestedRegions.some(region => !zones.includes(region))) fail("Invalid region");
+  if (!allSites && !selected.length && !(role === "BRANCH_MANAGER" && requestedRegions.length)) fail("Choose at least one site or manager region");
+  if (row.siteIds === undefined && selected.length === 1 && requestedRegions.length === 1 && requestedRegions[0] !== zoneOf(selected[0])) fail("Region must match the site");
+  const regionAccess = role === "BRANCH_MANAGER" ? [...new Set([...requestedRegions, ...selected.map(zoneOf)])] : [];
+  return { siteIds: allSites ? [] : selected.map(b => b.id), regionAccess, allSites,
+    branchId: allSites ? null : selected[0]?.id || null,
+    zone: allSites ? null : selected[0]?.zone || regionAccess[0] || null };
+
 }
 exports.list = handle(async (req, res) => {
   res.json(
@@ -136,6 +152,7 @@ exports.update = handle(async (req, res) => {
     role: target.role,
     branch_code: oldBranch?.code,
     zone: target.zone || (oldBranch && zoneOf(oldBranch)),
+    ...(req.body.site_code === undefined && req.body.branch_code === undefined ? { siteIds: target.siteIds?.length ? target.siteIds : target.branchId ? [target.branchId] : [], regionAccess: target.regionAccess || [], allSites: target.allSites || false } : {}),
     ...req.body,
   };
   const data = await validateStaff(row, req.user, branches, true);
@@ -212,20 +229,19 @@ exports.importCsv = handle(async (req, res) => {
 module.exports.staffScope = staffScope;
 
 exports.technicians = handle(async (req, res) => {
-  if (req.user.role !== "BRANCH_MANAGER" || !req.user.branchId)
+  if (req.user.role !== "BRANCH_MANAGER" || (!req.user.branchId && !req.user.regionAccess?.length && !req.user.siteIds?.length))
     return res.status(403).json({ message: "A configured site manager is required" });
   res.json(await prisma.user.findMany({ where: { role: "STAFF" }, select, orderBy: { name: "asc" } }));
 });
 exports.assignTechnician = handle(async (req, res) => {
-  if (req.user.role !== "BRANCH_MANAGER" || !req.user.branchId)
+  if (req.user.role !== "BRANCH_MANAGER" || (!req.user.branchId && !req.user.regionAccess?.length && !req.user.siteIds?.length))
     return res.status(403).json({ message: "A configured site manager is required" });
-  if (typeof req.body.branchId !== "string" || !req.body.branchId) fail("Choose a destination site");
-  const site = await prisma.branch.findUnique({ where: { id: req.body.branchId } });
-  if (!site) fail("Unknown destination site");
+  const branches = await prisma.branch.findMany();
+  const access = validateAccess({ ...req.body, siteIds: req.body.siteIds ?? (req.body.branchId ? [req.body.branchId] : []) }, "STAFF", branches);
   if (typeof req.body.technicianId !== "string") fail("Choose an existing technician");
   const target = await prisma.user.findFirst({ where: { id: req.body.technicianId, role: "STAFF" } });
   if (!target) return res.status(404).json({ message: "Technician not found" });
-  const result = await prisma.user.updateMany({ where: { id: target.id, role: "STAFF", branchId: target.branchId }, data: { branchId: site.id, zone: zoneOf(site) } });
+  const result = await prisma.user.updateMany({ where: { id: target.id, role: "STAFF", branchId: target.branchId }, data: access });
   if (!result.count) return res.status(409).json({ message: "Assignment changed. Refresh and retry" });
   res.json(await prisma.user.findUnique({ where: { id: target.id }, select }));
 });

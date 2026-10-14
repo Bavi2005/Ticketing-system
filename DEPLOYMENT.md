@@ -210,3 +210,19 @@ The API also permits up to 30 seconds for the deletion transaction and reports
 relationship errors or transaction conflicts as actionable 409 responses instead
 of a generic production 500. A relationship error can have another cause: if it
 persists after the upgrade, inspect the server logs and live database constraints.
+
+## Multiple-site and region access (14 October 2026)
+
+Before deploying this version to an existing database, run
+`backend/prisma/upgrades/20261014_multi_site_access.sql` in Supabase SQL Editor
+(or using the database owner's connection). This additive, repeatable upgrade
+preserves credentials and primary sites and backfills existing site/region grants.
+Docker startup does not apply schema upgrades automatically.
+
+Managers see every site's tickets in their selected regions, including the regions
+of their selected sites. Existing single-site managers inherit their site's region.
+Technicians see tickets at their selected sites (plus their existing personal ticket
+assignments); “All sites” includes all current and future sites across regions.
+HQ can edit manager regions/sites in Account access. Managers can edit technician
+site access or use Assign technician to sites. CSV site_code and region cells support
+semicolon-separated values; technician site_code `*` means all sites.

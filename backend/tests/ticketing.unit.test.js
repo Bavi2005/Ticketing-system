@@ -72,23 +72,23 @@ beforeEach(() => {
   prisma.user.findMany.mockResolvedValue([]);
   prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
 });
-test("staff have requester scope, managers have branch scope, HQ has company scope; missing identity fails closed", () => {
+test("staff have site and personal scope, managers have region scope, HQ has company scope; missing identity fails closed", () => {
   expect(scope({ role: "STAFF", branchId: "pahang", id: "alice" })).toEqual({
-    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
+    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }, { branchId: { in: ["pahang"] } }],
   });
-  expect(scope({ role: "BRANCH_MANAGER", branchId: "pahang" })).toEqual({
-    OR: [{ branchId: "pahang" }, { requester: { role: "STAFF", branchId: "pahang" } }, { assignee: { role: "STAFF", branchId: "pahang" } }],
+  expect(scope({ role: "BRANCH_MANAGER", branchId: "pahang", zone: "CENTRAL" })).toEqual({
+    branch: { OR: [{ id: { in: ["pahang"] } }, { zone: { in: ["CENTRAL"] } }] },
   });
   expect(scope({ role: "HQ_ADMIN" })).toEqual({});
   expect(scope({ role: "STAFF" }).OR[0].requesterId).toBe("__NO_USER__");
-  expect(scope({ role: "BRANCH_MANAGER" }).OR[0].branchId).toBe("__NO_BRANCH__");
+  expect(scope({ role: "BRANCH_MANAGER" }).branch.OR).toEqual([{ id: { in: [] } }, { zone: { in: [] } }]);
   expect(scope({ role: "UNKNOWN" })).toEqual({ id: "__NO_ACCESS__" });
 });
 test("list and dashboard cannot override requester scope through a query", async () => {
   for (const path of ["/tickets", "/dashboard"]) {
     expect((await request(app).get(`${path}?branchId=sabah`)).status).toBe(200);
     expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({
-      OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
+      OR: [{ requesterId: "alice" }, { assigneeId: "alice" }, { branchId: { in: ["pahang"] } }],
       AND: [{ branchId: "sabah" }],
     });
   }
@@ -152,11 +152,7 @@ test("all five totals, category drilldowns and graph outcomes reconcile", async 
   ]);
 });
 test("staff cannot override their assigned branch and new tickets start in progress", async () => {
-  prisma.branch.findUnique.mockResolvedValue({
-    id: "pahang",
-    name: "Pahang",
-    zone: "CENTRAL",
-  });
+  prisma.branch.findUnique.mockImplementation(async ({ where }) => ({ id: where.id, name: where.id, zone: "CENTRAL" }));
   prisma.ticket.create.mockResolvedValue(ticket);
   const payload = {
     title: "Camera offline",
@@ -225,7 +221,7 @@ test("out-of-scope IDs cannot be updated or commented on", async () => {
   ).toBe(404);
   expect(prisma.ticket.findFirst.mock.lastCall[0].where).toEqual({
     id: "other",
-    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
+    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }, { branchId: { in: ["pahang"] } }],
   });
   expect(prisma.ticket.update).not.toHaveBeenCalled();
   expect(prisma.ticketComment.create).not.toHaveBeenCalled();
@@ -358,13 +354,13 @@ test("HQ reads all branches and receives internal notes", async () => {
   expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({});
 });
 
-test("manager list and dashboard retain own-site or assigned-technician isolation", async () => {
+test("manager list and dashboard retain region boundaries", async () => {
   for (const path of ["/tickets", "/dashboard"]) {
     await request(app)
       .get(`${path}?branchId=sabah`)
       .set("x-role", "BRANCH_MANAGER");
     expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({
-      OR: [{ branchId: "pahang" }, { requester: { role: "STAFF", branchId: "pahang" } }, { assignee: { role: "STAFF", branchId: "pahang" } }],
+      branch: { OR: [{ id: { in: ["pahang"] } }, { zone: { in: ["CENTRAL"] } }] },
       AND: [{ branchId: "sabah" }],
     });
   }
@@ -386,7 +382,7 @@ test("staff can comment on their own submission to another branch", async () => 
   ).toBe(201);
   expect(prisma.ticket.findFirst.mock.lastCall[0].where).toEqual({
     id: "t1",
-    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }],
+    OR: [{ requesterId: "alice" }, { assigneeId: "alice" }, { branchId: { in: ["pahang"] } }],
   });
 });
 
@@ -509,4 +505,28 @@ test("only operator can delete all tickets and exact confirmation is required", 
   expect(result.status).toBe(200);
   expect(result.body.count).toBe(8);
   expect(prisma.ticket.deleteMany).toHaveBeenCalledWith({});
+});
+
+test("manager region access covers every tower in multiple regions but denies other regions", () => {
+  const { canAccessSite, siteScope } = require('../src/utils/ticketing');
+  const manager = { role: 'BRANCH_MANAGER', branchId: 'tower1', branch: { zone: 'CENTRAL' }, regionAccess: ['EC'] };
+  expect(canAccessSite(manager, { id: 'tower2', zone: 'CENTRAL' })).toBe(true);
+  expect(canAccessSite(manager, { id: 'east-site', zone: 'EC' })).toBe(true);
+  expect(canAccessSite(manager, { id: 'south-site', zone: 'SOUTHERN' })).toBe(false);
+  expect(siteScope(manager).OR[1].zone.in).toEqual(['EC', 'CENTRAL']);
+});
+test("technicians have selected sites or all sites while unknown roles remain denied", () => {
+  const { canAccessSite } = require('../src/utils/ticketing');
+  const tech = { role: 'STAFF', siteIds: ['tower1', 'east-site'] };
+  expect(canAccessSite(tech, { id: 'east-site', zone: 'EC' })).toBe(true);
+  expect(canAccessSite(tech, { id: 'tower2', zone: 'CENTRAL' })).toBe(false);
+  expect(scope({ ...tech, allSites: true })).toEqual({});
+  expect(scope({ role: 'UNKNOWN', allSites: true })).toEqual({ id: '__NO_ACCESS__' });
+});
+test("manager can move a ticket to another tower within their region", async () => {
+  prisma.ticket.findFirst.mockResolvedValue(ticket);
+  prisma.branch.findUnique.mockResolvedValue({ id: 'tower2', zone: 'CENTRAL' });
+  const response = await request(app).patch('/tickets/t1').set('x-role', 'BRANCH_MANAGER').send({ branchId: 'tower2' });
+  expect(response.status).toBe(200);
+  expect(prisma.ticket.updateMany.mock.lastCall[0].data.branchId).toBe('tower2');
 });
