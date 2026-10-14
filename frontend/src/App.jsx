@@ -1349,7 +1349,7 @@ function TicketList({ tickets, open, compact }) {
 }
 function TicketForm({ metadata, user, headers, done, cancel }) {
   const own = metadata?.branches.find((b) => b.id === user.branchId);
-  const locked = user.role === "STAFF";
+  const locked = user.role === "STAFF" && metadata?.submissionBranches?.length === 1;
   const [form, setForm] = useState({
     title: "",
     description: "",

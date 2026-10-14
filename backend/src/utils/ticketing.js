@@ -19,21 +19,28 @@ const missed = (t, now = new Date()) =>
       ? t.resolvedAt || t.closedAt || t.updatedAt
       : t.waitingSince || now,
   ) > new Date(t.resolutionDueAt);
-const scope = (user) =>
-  ["HQ_ADMIN", "OPERATOR"].includes(user.role)
-    ? {}
-    : user.role === "STAFF"
-      ? {
-          OR: [
-            { requesterId: user.id || "__NO_USER__" },
-            { assigneeId: user.id || "__NO_USER__" },
-          ],
-        }
-      : user.role === "BRANCH_MANAGER"
-        ? {
-            OR: [{ branchId: user.branchId || "__NO_BRANCH__" }, { requester: { role: "STAFF", branchId: user.branchId || "__NO_BRANCH__" } }, { assignee: { role: "STAFF", branchId: user.branchId || "__NO_BRANCH__" } }],
-          }
-        : { id: "__NO_ACCESS__" };
+const siteIdsOf = (user) => [...new Set([...(user.siteIds || []), user.branchId].filter(Boolean))];
+const regionsOf = (user) => [...new Set([...(user.regionAccess || []), user.branch?.zone || user.zone].filter(Boolean))];
+const siteScope = (user) => {
+  if (["HQ_ADMIN", "OPERATOR"].includes(user.role) || (user.role === "STAFF" && user.allSites)) return {};
+  if (user.role === "BRANCH_MANAGER") return { OR: [{ id: { in: siteIdsOf(user) } }, { zone: { in: regionsOf(user) } }] };
+  return { id: { in: user.role === "STAFF" ? siteIdsOf(user) : [] } };
+};
+const canAccessSite = (user, site) =>
+  ["HQ_ADMIN", "OPERATOR"].includes(user.role) ||
+  (user.role === "STAFF" && user.allSites) ||
+  (["STAFF", "BRANCH_MANAGER"].includes(user.role) && siteIdsOf(user).includes(site.id)) ||
+  (user.role === "BRANCH_MANAGER" && regionsOf(user).includes(site.zone));
+const scope = (user) => {
+  if (["HQ_ADMIN", "OPERATOR"].includes(user.role) || (user.role === "STAFF" && user.allSites)) return {};
+  if (user.role === "BRANCH_MANAGER") return { branch: siteScope(user) };
+  if (user.role === "STAFF") return { OR: [
+    { requesterId: user.id || "__NO_USER__" },
+    { assigneeId: user.id || "__NO_USER__" },
+    { branchId: { in: siteIdsOf(user) } },
+  ] };
+  return { id: "__NO_ACCESS__" };
+};
 const fail = (message) => {
   throw Object.assign(new Error(message), { status: 400 });
 };
@@ -98,6 +105,7 @@ function matches(t, query, now) {
   );
 }
 module.exports = {
+  siteIdsOf, regionsOf, siteScope, canAccessSite,
   categories,
   zones,
   statuses,

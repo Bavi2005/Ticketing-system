@@ -1,6 +1,7 @@
 const { randomUUID } = require("crypto");
 const prisma = require("../utils/prisma");
 const {
+  siteScope, canAccessSite,
   categories,
   zones,
   statuses,
@@ -34,12 +35,7 @@ const handle = (fn) => async (req, res, next) => {
   }
 };
 exports.metadata = handle(async (req, res) => {
-  const branchWhere =
-    req.user.role === "BRANCH_MANAGER"
-      ? { id: req.user.branchId || "__NO_SITE__" }
-      : req.user.role === "STAFF"
-        ? { id: req.user.branchId || "__NO_BRANCH__" }
-        : {};
+  const branchWhere = siteScope(req.user);
   const branches = await prisma.branch.findMany({
     where: branchWhere,
     orderBy: { name: "asc" },
@@ -147,21 +143,13 @@ exports.create = handle(async (req, res) => {
     fail(
       "Provide a title, description, valid service category, priority and region",
     );
-  if (req.user.role === "STAFF" && branchId && branchId !== req.user.branchId)
-    return res
-      .status(403)
-      .json({ message: "Your assigned site cannot be changed" });
-  const targetId =
-    req.user.role === "STAFF"
-      ? req.user.branchId
-      : branchId || req.user.branchId;
+  const targetId = branchId || req.user.branchId;
   const branch =
     targetId && (await prisma.branch.findUnique({ where: { id: targetId } }));
   if (!branch || zoneOf(branch) !== zone)
     fail("Select a site within the chosen region");
   if (
-    req.user.role === "BRANCH_MANAGER" &&
-    branch.id !== req.user.branchId
+    !canAccessSite(req.user, branch)
   )
     return res
       .status(403)
@@ -262,8 +250,7 @@ exports.update = handle(async (req, res) => {
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) fail("Unknown site");
     if (
-      user.role === "BRANCH_MANAGER" &&
-      branch.id !== user.branchId && branch.id !== ticket.branchId
+      !canAccessSite(user, branch)
     )
       return res
         .status(403)

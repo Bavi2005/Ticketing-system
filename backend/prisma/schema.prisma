@@ -47,6 +47,9 @@ model User {
   role Role @default(STAFF)
   accessEnabled Boolean @default(true)
   zone String?
+  siteIds String[] @default([])
+  regionAccess String[] @default([])
+  allSites Boolean @default(false)
   operatorId String?
   operator Operator? @relation("OperatorStaff", fields: [operatorId], references: [id])
   ownedOperator Operator? @relation("OperatorAccount")

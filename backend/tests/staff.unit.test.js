@@ -288,8 +288,8 @@ test("site managers can move their technicians but cannot promote or reset passw
   const target = { id: "tech1", name: "Technician", email: "tech@test.com", role: "STAFF", branchId: "br1", zone: "CENTRAL", operatorId: null };
   prisma.user.findFirst.mockResolvedValue(target); prisma.user.updateMany.mockResolvedValue({ count: 1 }); prisma.user.findUnique.mockResolvedValue(target);
   expect((await request(app).patch("/staff/tech1").set("x-role", "BRANCH_MANAGER").send({ accessEnabled: false })).status).toBe(200);
-  expect(prisma.user.findFirst.mock.lastCall[0].where).toMatchObject({ role: "STAFF", branchId: "br1" });
-  expect(prisma.user.updateMany.mock.lastCall[0].where).toMatchObject({ role: "STAFF", branchId: "br1" });
+  expect(prisma.user.findFirst.mock.lastCall[0].where).toMatchObject({ role: "STAFF", OR: expect.any(Array) });
+  expect(prisma.user.updateMany.mock.lastCall[0].where).toMatchObject({ role: "STAFF", OR: expect.any(Array) });
   for (const payload of [{ role: "BRANCH_MANAGER" }, { password: "Changed-password-123" }]) expect((await request(app).patch("/staff/tech1").set("x-role", "BRANCH_MANAGER").send(payload)).status).toBe(403);
   expect((await request(app).patch("/staff/tech1").set("x-role", "BRANCH_MANAGER").send({ site_code: "BR2", region: "EC" })).status).toBe(200);
   expect(prisma.user.updateMany.mock.lastCall[0].data).toMatchObject({ branchId: "br2", zone: "EC" });
@@ -297,14 +297,14 @@ test("site managers can move their technicians but cannot promote or reset passw
   expect((await request(app).patch("/staff/outside").set("x-role", "BRANCH_MANAGER").send({ accessEnabled: true })).status).toBe(404);
 });
 test("site manager sends an existing technician to any chosen site without granting extra privileges", async () => {
-  prisma.branch.findUnique.mockResolvedValue({ id: "br3", zone: "SOUTHERN" });
+  prisma.branch.findMany.mockResolvedValue([{ id: "br3", zone: "SOUTHERN" }]);
   prisma.user.findFirst.mockResolvedValue({ id: "tech2", role: "STAFF", branchId: "br2" });
   prisma.user.updateMany.mockResolvedValue({ count: 1 }); prisma.user.findUnique.mockResolvedValue({ id: "tech2", role: "STAFF", branchId: "br1" });
   const result = await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2", branchId: "br3", role: "HQ_ADMIN", accessEnabled: true });
   expect(result.status).toBe(200);
   expect(prisma.user.findFirst.mock.lastCall[0].where).toEqual({ id: "tech2", role: "STAFF" });
-  expect(prisma.user.updateMany.mock.lastCall[0]).toEqual({ where: { id: "tech2", role: "STAFF", branchId: "br2" }, data: { branchId: "br3", zone: "SOUTHERN" } });
-  expect(scope({ role: "BRANCH_MANAGER", branchId: "br1" }).OR).toContainEqual({ requester: { role: "STAFF", branchId: "br1" } });
+  expect(prisma.user.updateMany.mock.lastCall[0]).toEqual({ where: { id: "tech2", role: "STAFF", branchId: "br2" }, data: { branchId: "br3", zone: "SOUTHERN", siteIds: ["br3"], regionAccess: [], allSites: false } });
+  expect(scope({ role: "BRANCH_MANAGER", branchId: "br1", zone: "CENTRAL" }).branch.OR).toContainEqual({ zone: { in: ["CENTRAL"] } });
   prisma.user.findFirst.mockResolvedValue(null);
   expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "hq", branchId: "br3" })).status).toBe(404);
   expect((await request(app).post("/assign").set("x-role", "STAFF").send({ technicianId: "tech2" })).status).toBe(403);
@@ -427,4 +427,36 @@ test.each(["P2028", "P2034"])("deletion reports retry guidance for transaction f
   expect(response.status).toBe(409);
   expect(response.body.message).toContain("Please retry");
   expect(prisma.$transaction.mock.lastCall[1]).toEqual({ maxWait: 10000, timeout: 30000 });
+});
+
+test("HQ assigns a manager multiple sites and regions and rejects invalid sites", async () => {
+  const payload = { name: 'Multi Manager', email: 'multi@test.com', password: 'Unique-password-123', role: 'BRANCH_MANAGER', siteIds: ['br1', 'br2'], regionAccess: ['NORTHERN'] };
+  prisma.user.create.mockResolvedValue({ id: 'multi' });
+  expect((await request(app).post('/staff').set('x-role', 'HQ_ADMIN').send(payload)).status).toBe(201);
+  expect(prisma.user.create.mock.lastCall[0].data).toMatchObject({ siteIds: ['br1', 'br2'], regionAccess: ['NORTHERN', 'CENTRAL', 'EC'], allSites: false });
+  expect((await request(app).post('/staff').set('x-role', 'HQ_ADMIN').send({ ...payload, siteIds: ['missing'] })).status).toBe(400);
+  expect((await request(app).post('/staff').set('x-role', 'BRANCH_MANAGER').send(payload)).status).toBe(403);
+});
+test("manager can give technicians multiple sites or all sites and revoke all-site access", async () => {
+  prisma.user.findFirst.mockResolvedValue({ id: 'tech', role: 'STAFF', branchId: 'br1' });
+  prisma.user.updateMany.mockResolvedValue({ count: 1 });
+  prisma.user.findUnique.mockResolvedValue({ id: 'tech' });
+  for (const access of [{ siteIds: ['br1', 'br2'], allSites: false }, { siteIds: [], allSites: true }, { siteIds: ['br2'], allSites: false }]) {
+    expect((await request(app).post('/assign').set('x-role', 'BRANCH_MANAGER').send({ technicianId: 'tech', ...access })).status).toBe(200);
+    expect(prisma.user.updateMany.mock.lastCall[0].data).toMatchObject(access);
+  }
+});
+test("editing identity preserves existing multiple-site grants", async () => {
+  prisma.user.findFirst.mockResolvedValue({ id: 'tech', name: 'Tech', email: 'tech@test.com', role: 'STAFF', branchId: 'br1', siteIds: ['br1', 'br2'], allSites: false });
+  prisma.user.updateMany.mockResolvedValue({ count: 1 });
+  prisma.user.findUnique.mockResolvedValue({ id: 'tech' });
+  expect((await request(app).patch('/staff/tech').set('x-role', 'HQ_ADMIN').send({ name: 'New Name' })).status).toBe(200);
+  expect(prisma.user.updateMany.mock.lastCall[0].data.siteIds).toEqual(['br1', 'br2']);
+});
+test("CSV accepts semicolon sites and wildcard technician access", async () => {
+  const input = 'name,email,password,role,site_code,region\nManager,m@test.com,Unique-password-123,BRANCH_MANAGER,BR1;BR2,CENTRAL;EC\nTech,t@test.com,Unique-password-123,STAFF,*,\n';
+  const response = await request(app).post('/import').set('x-role', 'HQ_ADMIN').send({ csv: input, preview: true });
+  expect(response.status).toBe(200);
+  expect(response.body.staff[0].siteIds).toEqual(['br1', 'br2']);
+  expect(response.body.staff[1].allSites).toBe(true);
 });
