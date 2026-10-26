@@ -3992,3 +3992,16 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
 .bulk-user-option input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 20px; }
 .bulk-user-option span { min-width: 0; overflow-wrap: anywhere; }
 .bulk-user-option small { display: block; margin-top: 4px; color: var(--text-muted); }
+
+/* Keep the bottom profile dropdown usable while scrolling the workspace. */
+@media (min-width: 701px) {
+  .sidebar {
+    height: 100dvh;
+    z-index: 30;
+  }
+  .sidebar-profile { flex-shrink: 0; }
+}
+.sidebar-profile .profile-dropdown {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
