@@ -3752,7 +3752,7 @@ textarea {
 .access-list-head p, .operator-data-settings p { overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .sidebar nav button span:not(.nav-dot) { max-width: 100%; white-space: normal; line-height: 1.25; text-align: center; }
-  .shell, .shell.sidebar-collapsed { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
+  /* The extra bottom space is needed only for the mobile fixed navigation. */
 }
 
 
@@ -3774,7 +3774,7 @@ textarea {
   .sidebar-head .brand { flex: 1 1 0; min-width: 0; }
   .sidebar-head .brand > div:last-child { min-width: 0; }
   .sidebar-head .brand-icon { flex: 0 0 36px; }
-  .sidebar-head .sidebar-toggle { flex: 0 0 32px; width: 32px; height: 32px; }
+  .sidebar-head .sidebar-toggle { flex: 0 0 40px; width: 40px; height: 40px; }
   .sidebar .brand { gap: 7px; font-size: 18px; letter-spacing: -0.65px; }
   .sidebar .brand small {
     font-size: 9px; letter-spacing: 0.35px;
@@ -3782,8 +3782,14 @@ textarea {
     margin-top: 2px;
   }
   .sidebar-collapsed .sidebar .brand { flex: 0 0 auto; }
-  .sidebar-collapsed .sidebar-head .brand-icon { flex-basis: 36px; }
-  .sidebar-collapsed .sidebar-head .sidebar-toggle { display: none; }
+  /* In icon-only mode the reopen control must remain reachable. */
+  .sidebar-collapsed .sidebar-head .brand { display: none; }
+  .sidebar-collapsed .sidebar-head .sidebar-toggle {
+    display: grid;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+  }
   .content { padding: 26px 28px; width: 100%; min-width: 0; }
   .page-heading { margin-bottom: 16px; }
   .page-heading h1 { font-size: clamp(27px, 2.1vw, 36px); line-height: 1.18; }
@@ -4004,4 +4010,43 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
 .sidebar-profile .profile-dropdown {
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* Small-screen navigation and account-menu usability. */
+@media (max-width: 700px) {
+  .shell, .shell.sidebar-collapsed {
+    padding-bottom: calc(94px + env(safe-area-inset-bottom));
+  }
+  .sidebar, .sidebar-collapsed .sidebar { gap: 8px; }
+  .sidebar-head { min-width: 0; }
+  .sidebar .brand, .sidebar-collapsed .sidebar .brand {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .sidebar .brand > div:last-child { min-width: 0; }
+  .sidebar-profile > .profile-trigger,
+  .sidebar-collapsed .sidebar-profile .profile-trigger {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+  .sidebar nav, .sidebar-collapsed .sidebar nav {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+  .sidebar nav button, .sidebar-collapsed .sidebar nav button {
+    min-width: 0;
+    min-height: 58px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .sidebar-profile .profile-dropdown {
+    max-height: max(100px, calc(100dvh - 154px - env(safe-area-inset-bottom)));
+    overscroll-behavior: contain;
+  }
+  .public-report { padding: 16px 12px; }
+  .public-report-head { flex-wrap: wrap; gap: 12px; }
+  .report-panel-head .report-period { flex-wrap: wrap; }
 }
