@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   Activity,
@@ -158,6 +158,8 @@ export default function App() {
     [profileOpen, setProfileOpen] = useState(false),
     [periodOpen, setPeriodOpen] = useState(false);
   const profileMenu = useRef(null);
+  const profileTrigger = useRef(null);
+  const [profilePosition, setProfilePosition] = useState(null);
   const periodMenu = useRef(null);
   const requestId = useRef(0);
   const loadedScope = useRef("");
@@ -195,6 +197,51 @@ export default function App() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
+  useLayoutEffect(() => {
+    if (!profileOpen) return undefined;
+
+    // Keep the menu anchored to its trigger even when the page scrolls.
+    const positionMenu = () => {
+      const trigger = profileTrigger.current;
+      if (!trigger) return;
+      if (window.innerWidth <= 700) {
+        // Mobile uses its existing fixed, full-width menu layout.
+        setProfilePosition(null);
+        return;
+      }
+
+      const rect = trigger.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const availableRight = window.innerWidth - rect.right - 24;
+      const beside = sidebarCollapsed && availableRight >= 180;
+      setProfilePosition({
+        position: "fixed",
+        top: "auto",
+        right: "auto",
+        left: beside ? rect.right + 12 : rect.left,
+        bottom: beside
+          ? Math.max(8, viewportHeight - rect.bottom)
+          : Math.max(8, viewportHeight - rect.top + 12),
+        width: beside ? Math.min(268, availableRight) : rect.width,
+        maxHeight: beside
+          ? Math.max(80, viewportHeight - 16)
+          : Math.max(80, rect.top - 24),
+      });
+    };
+
+    positionMenu();
+    window.addEventListener("scroll", positionMenu, true);
+    window.addEventListener("resize", positionMenu);
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setProfileOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("scroll", positionMenu, true);
+      window.removeEventListener("resize", positionMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [profileOpen, sidebarCollapsed]);
   useEffect(() => {
     const close = (event) => {
       if (!periodMenu.current?.contains(event.target)) setPeriodOpen(false);
@@ -356,8 +403,10 @@ export default function App() {
         </nav>
         <div className="sidebar-profile profile-menu" ref={profileMenu}>
           <button
+            ref={profileTrigger}
             className="profile-trigger"
             aria-label="Open profile menu"
+            aria-haspopup="menu"
             aria-expanded={profileOpen}
             onClick={() => setProfileOpen((value) => !value)}
           >
@@ -377,7 +426,7 @@ export default function App() {
             <ChevronRight size={14} />
           </button>
           {profileOpen && (
-            <div className="profile-dropdown" role="menu">
+            <div className="profile-dropdown" role="menu" style={profilePosition || undefined}>
               <div className="profile-card">
                 <div className="avatar">{initials(session.user.name)}</div>
                 <div>
