@@ -4050,3 +4050,41 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
   .public-report-head { flex-wrap: wrap; gap: 12px; }
   .report-panel-head .report-period { flex-wrap: wrap; }
 }
+
+/* Password controls are available in every credential form. */
+.password-input {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+.password-input input {
+  width: 100%;
+  padding-right: 76px;
+}
+.password-input .password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 58px;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--text-purple);
+  font-size: 13px;
+  font-weight: 600;
+}
+.password-input .password-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+.notice { flex-wrap: wrap; }
+.notice-message { flex: 1; min-width: 140px; }
+.notice .notice-view {
+  margin-left: 0;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}

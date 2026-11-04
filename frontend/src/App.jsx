@@ -32,6 +32,8 @@ import {
   UserCircle,
 } from "lucide-react";
 import "./App.css";
+import PasswordInput from "./components/PasswordInput";
+import { roleName } from "./utils/roles";
 import StaffSettings from "./components/StaffSettings";
 import OperatorDataSettings from "./components/OperatorDataSettings";
 import OperatorControlCenter from "./components/OperatorControlCenter";
@@ -154,6 +156,7 @@ export default function App() {
   const [loading, setLoading] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const [createdTicket, setCreatedTicket] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false),
     [profileOpen, setProfileOpen] = useState(false),
     [periodOpen, setPeriodOpen] = useState(false);
@@ -176,12 +179,14 @@ export default function App() {
     setMetric("total");
     setCategory(null);
     setNotice("");
+    setCreatedTicket(null);
     window.location.assign("#overview");
   }, []);
   const navigate = (p) => {
     window.location.assign(`#${p}`);
     setPage(p);
     setNotice("");
+    setCreatedTicket(null);
     setPeriodOpen(false);
   };
   useEffect(() => {
@@ -414,13 +419,7 @@ export default function App() {
             <span>
               <b>{session.user.name}</b>
               <small>
-                {hq
-                  ? "HQ"
-                  : session.user.role === "OPERATOR"
-                    ? "Operator"
-                    : manager
-                      ? "Manager"
-                      : "Staff"}
+                {roleName(session.user.role)}
               </small>
             </span>
             <ChevronRight size={14} />
@@ -432,13 +431,7 @@ export default function App() {
                 <div>
                   <b>{session.user.name}</b>
                   <small>
-                    {hq
-                      ? "HQ administrator"
-                      : session.user.role === "OPERATOR"
-                        ? "Operator"
-                        : manager
-                          ? `${session.user.branch?.name || "Site"} manager`
-                          : "Staff requester"}
+                    {roleName(session.user.role)}
                   </small>
                 </div>
               </div>
@@ -484,10 +477,15 @@ export default function App() {
           {notice && (
             <div className="notice" role="status">
               <CheckCheck size={17} />
-              {notice}
+              <span className="notice-message">{notice}</span>
+              {createdTicket && (
+                <button type="button" className="notice-view" onClick={() => setSelected(createdTicket)}>
+                  View ticket <ArrowUpRight size={15} />
+                </button>
+              )}
               <button
                 aria-label="Dismiss notification"
-                onClick={() => setNotice("")}
+                onClick={() => { setNotice(""); setCreatedTicket(null); }}
               >
                 <X size={16} />
               </button>
@@ -602,12 +600,13 @@ export default function App() {
               metadata={metadata}
               user={session.user}
               headers={headers}
-              done={(m) => {
+              done={(m, ticket) => {
                 setFilters(initialFilters());
                 setMetric("total");
                 setCategory(null);
                 navigate("tickets");
                 setNotice(m);
+                setCreatedTicket(ticket);
                 load();
               }}
               cancel={() => navigate("overview")}
@@ -879,8 +878,7 @@ function Login({ onLogin }) {
           </label>
           <label>
             Password
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               required
               value={password}
@@ -968,7 +966,7 @@ function ProfileSettings({ session, headers, back, done }) {
           <dl>
             <div>
               <dt>Role</dt>
-              <dd>{label(session.user.role)}</dd>
+              <dd>{roleName(session.user.role)}</dd>
             </div>
             <div>
               <dt>Site</dt>
@@ -1011,8 +1009,7 @@ function ProfileSettings({ session, headers, back, done }) {
         <div className="credential-grid">
           <label>
             Current password
-            <input
-              type="password"
+            <PasswordInput
               value={form.currentPassword}
               onChange={(e) => update("currentPassword", e.target.value)}
               autoComplete="current-password"
@@ -1021,8 +1018,7 @@ function ProfileSettings({ session, headers, back, done }) {
           </label>
           <label>
             New password
-            <input
-              type="password"
+            <PasswordInput
               value={form.newPassword}
               onChange={(e) => update("newPassword", e.target.value)}
               autoComplete="new-password"
@@ -1425,7 +1421,8 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
         { headers },
       );
       done(
-        `${data.reference} created for ${data.branch.name}. You can track this request in your ticket register.`,
+        `${data.reference} created for ${data.branch.name}.`,
+        data,
       );
     } catch (e) {
       setError(e.response?.data?.message || "Unable to submit. Please retry.");
@@ -1585,7 +1582,6 @@ function TicketModal({ ticket, manager, userId, metadata, headers, close, change
     [branch, setBranch] = useState(ticket.branchId),
     [priority, setPriority] = useState(ticket.priority),
     [comment, setComment] = useState(""),
-    [internal, setInternal] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const dialog = useRef(null);
@@ -1624,7 +1620,7 @@ function TicketModal({ ticket, manager, userId, metadata, headers, close, change
       else {
         const { data } = await api.post(
           `/api/tickets/${current.id}/comments`,
-          { message: comment, internal },
+          { message: comment, internal: false },
           { headers },
         );
         setCurrent((t) => ({ ...t, comments: [...t.comments, data] }));
@@ -1643,6 +1639,11 @@ function TicketModal({ ticket, manager, userId, metadata, headers, close, change
       className="ticket-dialog"
       aria-labelledby="ticket-title"
       onCancel={close}
+      onClick={(event) => {
+        if (event.target !== dialog.current) return;
+        const box = dialog.current.getBoundingClientRect();
+        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) close();
+      }}
     >
       <button
         className="dialog-close icon-button"
@@ -1823,16 +1824,6 @@ function TicketModal({ ticket, manager, userId, metadata, headers, close, change
           />
         </label>
         <div className="form-actions">
-          {manager && (
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={internal}
-                onChange={(e) => setInternal(e.target.checked)}
-              />
-              Internal note
-            </label>
-          )}
           <button className="primary" disabled={busy || !comment.trim()}>
             Post update <ArrowUpRight size={15} />
           </button>

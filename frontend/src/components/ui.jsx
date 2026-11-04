@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import PasswordInput from './PasswordInput';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export { AnimatePresence };
@@ -246,12 +247,13 @@ export const btnGhost =
   'inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus:ring-4 focus:ring-gray-200/60 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus:ring-slate-700';
 
 export function Field({ id, label, error, className = '', ...props }) {
+  const Input = props.type === 'password' ? PasswordInput : 'input';
   return (
     <div className={className}>
       <label htmlFor={id} className={labelCls}>
         {label}
       </label>
-      <input
+      <Input
         id={id}
         {...props}
         className={`${inputCls} ${

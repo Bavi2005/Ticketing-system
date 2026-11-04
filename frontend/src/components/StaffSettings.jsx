@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, KeyRound, Plus, Search, ShieldCheck, Upload, X } from "lucide-react";
 
-const roleName = (role) => ({ HQ_ADMIN: "HQ administrator", BRANCH_MANAGER: "Site manager", STAFF: "Technician" }[role] || role);
+import PasswordInput from "./PasswordInput";
+import { roleName } from "../utils/roles";
 const blank = { name: "", email: "", password: "", role: "STAFF", site_code: "", region: "", accessEnabled: true, siteIds: [], regionAccess: [], allSites: false };
 
 function SiteChoices({ sites, value, onChange, allSites, onAllSites }) {
+  const [sort, setSort] = useState("name");
+  const compare = (a, b) => String(a || "").localeCompare(String(b || ""), "en", { numeric: true, sensitivity: "base" });
+  const sortedSites = [...sites].sort((a, b) => (sort === "region" ? compare(a.zone, b.zone) : 0) || compare(a.name, b.name) || compare(a.code, b.code) || compare(a.id, b.id));
   return <fieldset><legend>Sites</legend>
+    <label>Sort sites<select value={sort} onChange={e => setSort(e.target.value)}><option value="name">Site name · A–Z</option><option value="region">Region, then site name · A–Z</option></select></label>
     {onAllSites && <label className="access-toggle"><input type="checkbox" checked={allSites} onChange={e => onAllSites(e.target.checked)}/> All sites · across all regions</label>}
-    {!allSites && sites.map(site => <label className="access-toggle" key={site.id}><input type="checkbox" checked={value.includes(site.id)} onChange={e => onChange(e.target.checked ? [...value, site.id] : value.filter(id => id !== site.id))}/>{site.zone} · {site.name}</label>)}
+    {!allSites && sortedSites.map(site => <label className="access-toggle" key={site.id}><input type="checkbox" checked={value.includes(site.id)} onChange={e => onChange(e.target.checked ? [...value, site.id] : value.filter(id => id !== site.id))}/>{site.zone} · {site.name}</label>)}
   </fieldset>;
 }
 
@@ -117,10 +122,10 @@ export default function StaffSettings({ api, headers, user, metadata }) {
         {preview && <><div className="staff-table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Region</th></tr></thead><tbody>{preview.staff.map((item) => <tr key={item.email}><td>{item.name}</td><td>{item.email}</td><td>{roleName(item.role)}</td><td>{item.zone || "All regions"}</td></tr>)}</tbody></table></div><button className="primary" disabled={busy} onClick={() => importCsv(false)}>Register {preview.count} accounts</button></>}
       </div> : <form onSubmit={submit} className="access-editor">
         <div className="two"><label>Full name<input required minLength={2} maxLength={120} value={form.name} onChange={(e) => update("name", e.target.value)}/></label><label>Login email<input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)}/></label></div>
-        {(operator || editor.mode === "create") && <label>{editor.mode === "create" ? "Initial password" : "Reset password (optional)"}<input type="password" autoComplete="new-password" required={editor.mode === "create"} minLength={12} value={form.password} onChange={(e) => update("password", e.target.value)}/><small>12 or more characters. Leave empty to keep an existing password.</small></label>}
-        <label>Access level<select disabled={siteManager} value={form.role} onChange={(e) => update("role", e.target.value)}><option value="STAFF">Technician</option>{!siteManager && <option value="BRANCH_MANAGER">Site manager</option>}{operator && <option value="HQ_ADMIN">HQ administrator</option>}</select></label>
+        {(operator || editor.mode === "create") && <label>{editor.mode === "create" ? "Initial password" : "Reset password (optional)"}<PasswordInput autoComplete="new-password" required={editor.mode === "create"} minLength={12} value={form.password} onChange={(e) => update("password", e.target.value)}/><small>12 or more characters. Leave empty to keep an existing password.</small></label>}
+        <label>Access level<select disabled={siteManager} value={form.role} onChange={(e) => update("role", e.target.value)}><option value="STAFF">Technician</option>{!siteManager && <option value="BRANCH_MANAGER">Site manager</option>}{operator && <option value="HQ_ADMIN">Administrator</option>}</select></label>
         {form.role !== "HQ_ADMIN" && <>
-          {form.role === "BRANCH_MANAGER" && <fieldset><legend>Regions</legend>{[...new Set(sites.map(site => site.zone))].map(region => <label className="access-toggle" key={region}><input type="checkbox" checked={form.regionAccess.includes(region)} onChange={e => update("regionAccess", e.target.checked ? [...form.regionAccess, region] : form.regionAccess.filter(item => item !== region))}/>{region}</label>)}<small>Managers can see every site's tickets in selected regions and in the regions of their selected sites.</small></fieldset>}
+          {form.role === "BRANCH_MANAGER" && <fieldset><legend>Regions</legend>{[...new Set(sites.map(site => site.zone))].sort().map(region => <label className="access-toggle" key={region}><input type="checkbox" checked={form.regionAccess.includes(region)} onChange={e => update("regionAccess", e.target.checked ? [...form.regionAccess, region] : form.regionAccess.filter(item => item !== region))}/>{region}</label>)}<small>Managers can see every site's tickets in selected regions and in the regions of their selected sites.</small></fieldset>}
           <SiteChoices sites={sites} value={form.siteIds} onChange={value => update("siteIds", value)} allSites={form.role === "STAFF" && form.allSites} onAllSites={form.role === "STAFF" ? value => update("allSites", value) : undefined}/>
         </>}
         {editor.mode === "edit" && <label className="access-toggle"><input type="checkbox" checked={form.accessEnabled !== false} onChange={(e) => update("accessEnabled", e.target.checked)}/><span>Give login access<small>Disabling access prevents sign-in and stops existing sessions.</small></span></label>}
