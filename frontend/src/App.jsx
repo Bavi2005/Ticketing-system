@@ -797,6 +797,7 @@ export default function App() {
         <TicketModal
           ticket={selected}
           manager={manager}
+          canDelete={hq || operator}
           userId={session.user.id}
           metadata={metadata}
           headers={headers}
@@ -1575,7 +1576,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     </div>
   );
 }
-function TicketModal({ ticket, manager, userId, metadata, headers, close, changed }) {
+function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, close, changed }) {
   const [current, setCurrent] = useState(ticket),
     [status, setStatus] = useState(ticket.status),
     [assignment, setAssignment] = useState(ticket.assigneeId || ""),
@@ -1585,6 +1586,8 @@ function TicketModal({ ticket, manager, userId, metadata, headers, close, change
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const dialog = useRef(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   useEffect(() => {
     // Synchronise the open detail view with freshly polled server data.
     // eslint-disable-next-line react/set-state-in-effect
@@ -1629,6 +1632,22 @@ function TicketModal({ ticket, manager, userId, metadata, headers, close, change
       changed();
     } catch (e) {
       setError(e.response?.data?.message || "Unable to save changes");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const deleteTicket = async () => {
+    if (!canDelete || deleteConfirmation !== "DELETE TICKET") return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.delete(`/api/tickets/${current.id}`, {
+        headers, data: { confirmation: "DELETE TICKET" },
+      });
+      close();
+      await changed();
+    } catch (e) {
+      setError(e.response?.data?.message || "Unable to delete ticket");
     } finally {
       setBusy(false);
     }
@@ -1787,6 +1806,30 @@ function TicketModal({ ticket, manager, userId, metadata, headers, close, change
             </button>
           </div>
         </form>
+      )}
+      {canDelete && (
+        <section className="ticket-delete-area" aria-label="Ticket deletion">
+          {!deleting ? (
+            <button type="button" className="danger-button" disabled={busy}
+              onClick={() => setDeleting(true)}>Delete ticket</button>
+          ) : (
+            <div className="panel">
+              <p><strong>Delete {current.reference}?</strong> The active ticket and comments
+                will be removed. A complete snapshot and the deleting account
+                will remain in the deletion history.</p>
+              <label>Type DELETE TICKET to confirm
+                <input autoComplete="off" value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)} />
+              </label>
+              <div className="staff-actions">
+                <button type="button" className="secondary" disabled={busy}
+                  onClick={() => { setDeleting(false); setDeleteConfirmation(""); }}>Cancel</button>
+                <button type="button" className="danger-button" disabled={busy || deleteConfirmation !== "DELETE TICKET"}
+                  onClick={deleteTicket}>{busy ? "Deleting…" : "Delete and archive history"}</button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
       <h3>Activity & updates</h3>
       <div className="comments">

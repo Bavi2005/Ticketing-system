@@ -5,6 +5,8 @@ process.env.JWT_SECRET ||= "ticketing-unit-test-secret";
 jest.mock("../src/utils/prisma", () => ({
   ticket: {
     deleteMany: jest.fn(),
+    delete: jest.fn(),
+    findUnique: jest.fn(),
     findMany: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -19,6 +21,8 @@ jest.mock("../src/utils/prisma", () => ({
     update: jest.fn(),
   },
   ticketComment: { create: jest.fn() },
+  deletionAudit: { create: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
+  $transaction: jest.fn(),
 }));
 const prisma = require("../src/utils/prisma");
 const controller = require("../src/controllers/ticketController");
@@ -40,6 +44,8 @@ app.get("/dashboard", controller.dashboard);
 app.get("/tickets", controller.list);
 app.get("/assignments", controller.assignments);
 app.delete("/tickets", controller.deleteAll);
+app.delete("/tickets/:id", controller.deleteOne);
+app.get("/deletion-log", controller.deletionLog);
 app.post("/tickets", controller.create);
 app.patch("/tickets/:id", controller.update);
 app.post("/tickets/:id/comments", controller.comment);
@@ -71,6 +77,7 @@ beforeEach(() => {
   prisma.branch.findMany.mockResolvedValue([]);
   prisma.user.findMany.mockResolvedValue([]);
   prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
+  prisma.$transaction.mockImplementation((fn) => fn(prisma));
 });
 test("staff have site and personal scope, managers have region scope, HQ has company scope; missing identity fails closed", () => {
   expect(scope({ role: "STAFF", branchId: "pahang", id: "alice" })).toEqual({
@@ -494,16 +501,58 @@ test("assignment inbox uses current owner and excludes completed tickets regardl
   expect(prisma.ticket.findMany.mock.lastCall[0].where).toEqual({ assigneeId: "alice", status: { notIn: ["RESOLVED", "CLOSED"] } });
   expect(result.body[0].comments).toHaveLength(1);
 });
-test("only operator can delete all tickets and exact confirmation is required", async () => {
-  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
-    expect((await request(app).delete("/tickets").set("x-role", role).send({ confirmation: "DELETE ALL TICKETS" })).status).toBe(403);
+test("only HQ and operator can delete individual tickets with an archived snapshot", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER"])
+    expect((await request(app).delete("/tickets/t1").set("x-role", role)
+      .send({ confirmation: "DELETE TICKET" })).status).toBe(403);
+  expect((await request(app).delete("/tickets/t1").set("x-role", "HQ_ADMIN").send({})).status).toBe(400);
+  prisma.ticket.findUnique.mockResolvedValue({ ...ticket, reference: "ENG-123", comments: [
+    { id: "c1", message: "Repair completed", internal: false, createdAt: new Date() },
+  ] });
+  prisma.ticket.delete.mockResolvedValue(ticket);
+  for (const role of ["HQ_ADMIN", "OPERATOR"]) {
+    const res = await request(app).delete("/tickets/t1").set("x-role", role)
+      .send({ confirmation: "DELETE TICKET" });
+    expect(res.status).toBe(200);
+    expect(prisma.deletionAudit.create.mock.lastCall[0].data).toMatchObject({
+      actorRole: role, subjectType: "TICKET", subjectId: "t1",
+      details: { ticket: { id: "t1" }, comments: [{ id: "c1", message: "Repair completed" }] },
+    });
   }
+  expect(prisma.ticket.delete).toHaveBeenCalledWith({ where: { id: "t1" } });
+});
+
+test("archive failure prevents any ticket deletion", async () => {
+  prisma.ticket.findUnique.mockResolvedValue({ ...ticket, reference: "ENG-123" });
+  prisma.deletionAudit.create.mockRejectedValueOnce(new Error("audit store unavailable"));
+  const response = await request(app).delete("/tickets/t1").set("x-role", "HQ_ADMIN")
+    .send({ confirmation: "DELETE TICKET" });
+  expect(response.status).toBe(500);
+  expect(prisma.ticket.delete).not.toHaveBeenCalled();
+});
+
+test("only HQ and operator can read deletion history", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER"])
+    expect((await request(app).get("/deletion-log").set("x-role", role)).status).toBe(403);
+  prisma.deletionAudit.findMany.mockResolvedValue([]);
+  expect((await request(app).get("/deletion-log").set("x-role", "HQ_ADMIN")).status).toBe(200);
+  expect(prisma.deletionAudit.findMany).toHaveBeenCalledWith({
+    take: 100, orderBy: { createdAt: "desc" },
+  });
+});
+
+test("operator bulk deletion archives every ticket; HQ cannot bulk-delete all", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"])
+    expect((await request(app).delete("/tickets").set("x-role", role)
+      .send({ confirmation: "DELETE ALL TICKETS" })).status).toBe(403);
   expect((await request(app).delete("/tickets").set("x-role", "OPERATOR").send({})).status).toBe(400);
-  expect(prisma.ticket.deleteMany).not.toHaveBeenCalled();
-  prisma.ticket.deleteMany.mockResolvedValue({ count: 8 });
-  const result = await request(app).delete("/tickets").set("x-role", "OPERATOR").send({ confirmation: "DELETE ALL TICKETS" });
+  prisma.ticket.findMany.mockResolvedValue([{ ...ticket, reference: "ENG-123" }]);
+  prisma.ticket.deleteMany.mockResolvedValue({ count: 1 });
+  const result = await request(app).delete("/tickets").set("x-role", "OPERATOR")
+    .send({ confirmation: "DELETE ALL TICKETS" });
   expect(result.status).toBe(200);
-  expect(result.body.count).toBe(8);
+  expect(result.body.count).toBe(1);
+  expect(prisma.deletionAudit.createMany.mock.lastCall[0].data[0].subjectType).toBe("TICKET");
   expect(prisma.ticket.deleteMany).toHaveBeenCalledWith({});
 });
 

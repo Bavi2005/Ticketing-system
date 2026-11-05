@@ -40,13 +40,13 @@ export default function OperatorDataSettings({ api, headers, changed }) {
   const toggle = (id) => changeSelection(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
   return <section className="panel operator-data-settings" aria-label="Operator data settings">
     <h2>Operator data settings</h2>
-    <p className="muted">Only operators can permanently delete ticket data or user accounts.</p>
+    <p className="muted">Operators can remove all ticket data or selected accounts. Every deletion is recorded in Access Control → Deletion history.</p>
     {notice && <p className="notice" role="status">{notice}</p>}
     <div className="staff-actions"><button className="danger-button" onClick={() => open("tickets")}>Delete all ticket data</button><button className="danger-button" onClick={() => open("user")}>Delete users</button></div>
     {action && <dialog ref={dialog} className="ticket-dialog deletion-dialog" aria-labelledby="delete-title" onCancel={(event) => { event.preventDefault(); if (!busy) setAction(null); }}>
       <form onSubmit={remove}>
         <h2 id="delete-title">{action === "tickets" ? "Delete all ticket data?" : `Delete selected users (${selected.length})?`}</h2>
-        <p>{action === "tickets" ? "Permanently delete every ticket and all ticket comments across every site, including data outside your current filters. Accounts and sites will remain. This cannot be undone." : "Permanently remove the selected logins and end their access. Tickets and comments remain, showing Deleted user for the removed author. Assigned tickets become unassigned. Operator accounts cannot be deleted here."}</p>
+        <p>{action === "tickets" ? "Permanently remove every active ticket and comment across all sites, including data outside your filters. Archived snapshots and deletion audit records remain. Accounts and sites remain. This cannot be undone." : "Permanently remove the selected logins and end their access. Their account metadata is archived without passwords. Tickets and comments remain (removed authors appear as Deleted user), and assigned tickets become unassigned. Operator accounts cannot be deleted here."}</p>
         {action === "user" && <div className="bulk-user-picker">
           <label>Search users<input type="search" value={search} disabled={busy} placeholder="Name, email or site" onChange={(event) => setSearch(event.target.value)} /></label>
           <div className="staff-actions">

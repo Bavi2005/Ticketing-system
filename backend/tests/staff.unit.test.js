@@ -13,6 +13,7 @@ jest.mock("../src/utils/prisma", () => ({
     deleteMany: jest.fn(),
   },
   ticket: { updateMany: jest.fn() },
+  deletionAudit: { create: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
   operator: { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() },
   branch: { findMany: jest.fn(), findUnique: jest.fn() },
   $transaction: jest.fn(),
@@ -320,24 +321,41 @@ test("site-manager assignment list includes unassigned technicians and technicia
   expect(prisma.user.findMany.mock.lastCall[0].select.passwordHash).toBeUndefined();
 });
 
-test("only operators can delete users; protected accounts and missing confirmation cannot be deleted", async () => {
-  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
-    expect((await request(app).delete("/staff/tech1").set("x-role", role).send({ confirmation: "DELETE USER" })).status).toBe(403);
+test("HQ and operator can delete staff accounts, but never protected accounts", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER"]) {
+    expect((await request(app).delete("/staff/tech1").set("x-role", role)
+      .send({ confirmation: "DELETE USER" })).status).toBe(403);
   }
   expect((await request(app).delete("/staff/actor").send({ confirmation: "DELETE USER" })).status).toBe(403);
   expect((await request(app).delete("/staff/tech1").send({})).status).toBe(400);
-  prisma.user.findUnique.mockResolvedValue({ id: "other-operator", role: "OPERATOR" });
+  prisma.user.findFirst.mockResolvedValue({ id: "other-operator", role: "OPERATOR" });
   expect((await request(app).delete("/staff/other-operator").send({ confirmation: "DELETE USER" })).status).toBe(403);
-  expect(prisma.user.delete).not.toHaveBeenCalled();
+  prisma.user.findFirst.mockResolvedValue({ id: "hq2", role: "HQ_ADMIN" });
+  expect((await request(app).delete("/staff/hq2").set("x-role", "HQ_ADMIN")
+    .send({ confirmation: "DELETE USER" })).status).toBe(403);
+  expect(prisma.user.deleteMany).not.toHaveBeenCalled();
 });
-test("operator deletion clears assignments and removes user in a transaction", async () => {
-  prisma.user.findUnique.mockResolvedValue({ id: "tech1", role: "STAFF" });
-  const result = await request(app).delete("/staff/tech1").send({ confirmation: "DELETE USER" });
+
+test.each(["OPERATOR", "HQ_ADMIN"])("%s account deletion saves audit without a password hash", async (role) => {
+  prisma.user.findFirst.mockResolvedValue({ id: "tech1", name: "Technician", email: "tech@test.com",
+    role: "STAFF", passwordHash: "do-not-archive" });
+  prisma.user.deleteMany.mockResolvedValue({ count: 1 });
+  const result = await request(app).delete("/staff/tech1").set("x-role", role)
+    .send({ confirmation: "DELETE USER" });
   expect(result.status).toBe(200);
   expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-  expect(prisma.ticket.updateMany).toHaveBeenCalledWith({ where: { assigneeId: "tech1" }, data: { assigneeId: null, escalatedAt: null } });
-  expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "tech1" } });
+  expect(prisma.ticket.updateMany).toHaveBeenCalledWith({
+    where: { assigneeId: "tech1" }, data: { assigneeId: null, escalatedAt: null },
+  });
+  expect(prisma.user.deleteMany.mock.lastCall[0].where).toMatchObject({
+    id: "tech1", role: { in: role === "HQ_ADMIN" ? ["STAFF", "BRANCH_MANAGER"] : ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"] },
+  });
+  const archived = prisma.deletionAudit.create.mock.lastCall[0].data;
+  expect(archived).toMatchObject({ actorRole: role, subjectType: "USER", subjectId: "tech1",
+    details: { id: "tech1", name: "Technician" } });
+  expect(JSON.stringify(archived)).not.toContain("do-not-archive");
 });
+
 test("assignment rejects missing or unknown destination and detects a concurrent move", async () => {
   expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2" })).status).toBe(400);
   prisma.branch.findUnique.mockResolvedValue(null);
@@ -348,13 +366,14 @@ test("assignment rejects missing or unknown destination and detects a concurrent
   prisma.user.updateMany.mockResolvedValue({ count: 0 });
   expect((await request(app).post("/assign").set("x-role", "BRANCH_MANAGER").send({ technicianId: "tech2", branchId: "br2" })).status).toBe(409);
 });
-test("delete route rejects forged operator JWT claims", async () => {
-  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
+test("deletion routes reject forged operator claims on technician and manager sessions", async () => {
+  for (const role of ["STAFF", "BRANCH_MANAGER"]) {
     prisma.user.findUnique.mockResolvedValue({ id: "actor", role });
     const fake = jwt.sign({ userId: "actor", role: "OPERATOR" }, process.env.JWT_SECRET);
-    expect((await request(routedApp).delete("/staff/tech1").set("Authorization", `Bearer ${fake}`).send({ confirmation: "DELETE USER" })).status).toBe(403);
+    expect((await request(routedApp).delete("/staff/tech1").set("Authorization", `Bearer ${fake}`)
+      .send({ confirmation: "DELETE USER" })).status).toBe(403);
   }
-  expect(prisma.user.delete).not.toHaveBeenCalled();
+  expect(prisma.user.deleteMany).not.toHaveBeenCalled();
 });
 
 const bulkDelete = { userIds: ["tech1", "manager1"], confirmation: "DELETE USERS" };
@@ -366,7 +385,8 @@ test("operator bulk deletion deduplicates IDs and preserves history in one trans
   expect(result.body.count).toBe(2);
   expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   expect(prisma.ticket.updateMany).toHaveBeenCalledWith({ where: { assigneeId: { in: bulkDelete.userIds } }, data: { assigneeId: null, escalatedAt: null } });
-  expect(prisma.user.deleteMany).toHaveBeenCalledWith({ where: { id: { in: bulkDelete.userIds }, role: { not: "OPERATOR" } } });
+  expect(prisma.user.deleteMany.mock.lastCall[0].where).toMatchObject({ id: { in: bulkDelete.userIds }, role: { in: ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"] } });
+  expect(prisma.deletionAudit.createMany.mock.lastCall[0].data).toHaveLength(2);
 });
 test("bulk deletion requires a nonempty ID list and explicit confirmation", async () => {
   for (const body of [{}, { ...bulkDelete, confirmation: "DELETE USER" }, ...[[], "all", [null], [""], [12]].map(userIds => ({ ...bulkDelete, userIds }))]) {
@@ -391,15 +411,17 @@ test("a concurrent account change throws inside the transaction to roll back the
   expect((await request(app).delete("/staff").send(bulkDelete)).status).toBe(409);
   expect(transactionRejected).toBe(true);
 });
-test("bulk delete route rejects missing login and forged operator JWT claims", async () => {
+test("bulk deletion rejects missing login and forged operator claims for technicians/managers", async () => {
   expect((await request(routedApp).delete("/staff").send(bulkDelete)).status).toBe(401);
-  for (const role of ["STAFF", "BRANCH_MANAGER", "HQ_ADMIN"]) {
+  for (const role of ["STAFF", "BRANCH_MANAGER"]) {
     prisma.user.findUnique.mockResolvedValue({ id: "actor", role });
     const fake = jwt.sign({ userId: "actor", role: "OPERATOR" }, process.env.JWT_SECRET);
-    expect((await request(routedApp).delete("/staff").set("Authorization", `Bearer ${fake}`).send(bulkDelete)).status).toBe(403);
+    expect((await request(routedApp).delete("/staff").set("Authorization", `Bearer ${fake}`)
+      .send(bulkDelete)).status).toBe(403);
   }
   expect(prisma.$transaction).not.toHaveBeenCalled();
 });
+
 test("operator can delete a single selected user through the bulk route", async () => {
   prisma.user.findUnique.mockResolvedValue({ id: "actor", role: "OPERATOR" });
   prisma.user.findMany.mockResolvedValue([{ id: "tech1", role: "STAFF" }]);

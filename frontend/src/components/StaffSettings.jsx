@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, KeyRound, Plus, Search, ShieldCheck, Upload, X } from "lucide-react";
+import { Download, History, KeyRound, Plus, Search, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 
 import PasswordInput from "./PasswordInput";
 import { roleName } from "../utils/roles";
@@ -27,12 +27,14 @@ function AccessDialog({ children, title, close }) {
 
 export default function StaffSettings({ api, headers, user, metadata }) {
   const operator = user.role === "OPERATOR", siteManager = user.role === "BRANCH_MANAGER";
+  const canDelete = operator || user.role === "HQ_ADMIN";
   const canCreate = ["OPERATOR", "HQ_ADMIN", "BRANCH_MANAGER"].includes(user.role);
   const [staff, setStaff] = useState([]), [search, setSearch] = useState("");
   const [editor, setEditor] = useState(null), [form, setForm] = useState(blank);
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState(""), [modalError, setModalError] = useState(""), [notice, setNotice] = useState("");
   const [candidates, setCandidates] = useState([]), [candidate, setCandidate] = useState(""), [candidateSearch, setCandidateSearch] = useState("");
   const [csv, setCsv] = useState(""), [preview, setPreview] = useState(null), [csvErrors, setCsvErrors] = useState([]);
+  const [deletionLog, setDeletionLog] = useState(null), [logError, setLogError] = useState("");
   const token = headers.Authorization;
   const sites = metadata?.assignmentBranches || metadata?.branches || [];
   const [destination, setDestination] = useState(user.branchId ? [user.branchId] : []);
@@ -88,6 +90,33 @@ export default function StaffSettings({ api, headers, user, metadata }) {
     catch (e) { setModalError(e.response?.data?.message || "Unable to assign technician"); }
     finally { setBusy(false); }
   };
+  const loadDeletionLog = async () => {
+    if (!canDelete) return;
+    try {
+      const { data } = await api.get("/api/tickets/deletion-log", { headers });
+      setDeletionLog(data); setLogError("");
+    } catch (e) {
+      setLogError(e.response?.data?.message || "Unable to load deletion history");
+    }
+  };
+  const deleteAccount = async (account) => {
+    if (!canDelete || busy) return;
+    const phrase = window.prompt(`Delete ${account.name} (${account.email})? Ticket history will remain. Type DELETE USER to confirm.`);
+    if (phrase !== "DELETE USER") return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const { data } = await api.delete(`/api/staff/${account.id}`, {
+        headers, data: { confirmation: "DELETE USER" },
+      });
+      setNotice(data.message);
+      await load();
+      await loadDeletionLog();
+    } catch (e) {
+      setError(e.response?.data?.message || "Unable to delete account");
+    } finally {
+      setBusy(false);
+    }
+  };
   const visible = staff.filter((account) => `${account.name} ${account.email} ${account.branch?.name || ""} ${roleName(account.role)}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="staff-settings page-enter">
     {error && <div className="error" role="alert">{error}<button className="secondary" onClick={load}>Retry</button></div>}
@@ -99,10 +128,26 @@ export default function StaffSettings({ api, headers, user, metadata }) {
       </div>
       <label className="access-search"><Search size={17}/><input aria-label="Search accounts" placeholder="Search name, email, role or site" value={search} onChange={(e) => setSearch(e.target.value)}/></label>
       <div className="staff-table-scroll"><table><thead><tr><th>Account</th><th>Access level</th><th>Region</th><th>Site</th><th>Login access</th><th>Actions</th></tr></thead><tbody>{visible.map((account) => <tr key={account.id}>
-        <td><b>{account.name}</b><small>{account.email}</small></td><td>{roleName(account.role)}</td><td>{account.allSites || account.role === "HQ_ADMIN" ? "All regions" : [...new Set([...(account.regionAccess || []), ...sites.filter(site => (account.siteIds || [account.branchId]).includes(site.id)).map(site => site.zone)])].join(", ") || account.zone || "Unassigned"}</td><td>{account.allSites || account.role === "HQ_ADMIN" ? "All sites" : sites.filter(site => (account.siteIds?.length ? account.siteIds : [account.branchId]).includes(site.id)).map(site => site.name).join(", ") || "Region access"}</td><td><span className={`access-state ${account.accessEnabled === false ? "disabled" : "enabled"}`}>{account.accessEnabled === false ? "Disabled" : "Enabled"}</span></td><td><button className="secondary" onClick={() => open(account)}><KeyRound size={14}/> Edit access</button></td>
+        <td><b>{account.name}</b><small>{account.email}</small></td><td>{roleName(account.role)}</td><td>{account.allSites || account.role === "HQ_ADMIN" ? "All regions" : [...new Set([...(account.regionAccess || []), ...sites.filter(site => (account.siteIds || [account.branchId]).includes(site.id)).map(site => site.zone)])].join(", ") || account.zone || "Unassigned"}</td><td>{account.allSites || account.role === "HQ_ADMIN" ? "All sites" : sites.filter(site => (account.siteIds?.length ? account.siteIds : [account.branchId]).includes(site.id)).map(site => site.name).join(", ") || "Region access"}</td><td><span className={`access-state ${account.accessEnabled === false ? "disabled" : "enabled"}`}>{account.accessEnabled === false ? "Disabled" : "Enabled"}</span></td><td><div className="staff-actions"><button className="secondary" onClick={() => open(account)}><KeyRound size={14}/> Edit access</button>{canDelete && <button type="button" className="danger-button" disabled={busy} onClick={() => deleteAccount(account)}><Trash2 size={14}/> Delete</button>}</div></td>
       </tr>)}</tbody></table></div>
       {!visible.length && <p className="access-empty muted">{loading ? "Loading account access…" : "No accounts match this list."}</p>}
     </section>
+    {canDelete && <details className="panel deletion-log-panel" onToggle={(event) => { if (event.currentTarget.open) loadDeletionLog(); }}>
+      <summary><History size={16}/> Deletion history · tickets and accounts</summary>
+      <p className="muted">Up to 100 recent deletions. Includes the actor, timestamp and a saved snapshot. History remains even when an account or ticket no longer exists.</p>
+      {logError && <p className="error" role="alert">{logError}</p>}
+      {deletionLog === null ? <p className="muted">Open this section to load the audit log.</p> :
+        !deletionLog.length ? <p className="muted">No deletions recorded yet.</p> :
+        <div className="staff-table-scroll"><table><thead><tr><th>When</th><th>Deleted</th><th>Record</th><th>By</th><th>Archive</th></tr></thead>
+          <tbody>{deletionLog.map(entry => <tr key={entry.id}>
+            <td>{new Date(entry.createdAt).toLocaleString("en-MY")}</td>
+            <td>{entry.subjectType === "TICKET" ? "Ticket" : "Account"}</td>
+            <td>{entry.subjectLabel}<small>{entry.subjectId}</small></td>
+            <td>{entry.actorName}<small>{roleName(entry.actorRole)}</small></td>
+            <td><details><summary>View snapshot</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 350, overflow: "auto" }}>{JSON.stringify(entry.details, null, 2)}</pre></details></td>
+          </tr>)}</tbody>
+        </table></div>}
+    </details>}
     {editor && <AccessDialog title={editor.mode === "assign" ? "Assign technician to sites" : editor.mode === "bulk" ? "Bulk account registration" : editor.mode === "edit" ? `Edit access · ${form.name}` : "Register a new account"} close={() => { if (!busy) { setEditor(null); setForm(blank); } }}>
       {modalError && <div className="error" role="alert">{modalError}</div>}
       {editor.mode === "assign" ? <form onSubmit={assign} className="access-editor">

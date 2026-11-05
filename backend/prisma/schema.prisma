@@ -114,3 +114,19 @@ model TicketComment {
   createdAt DateTime @default(now())
   @@index([ticketId, createdAt])
 }
+
+model DeletionAudit {
+  id           String   @id @default(uuid())
+  action       String
+  actorId      String
+  actorName    String
+  actorRole    Role
+  subjectType  String
+  subjectId    String
+  subjectLabel String
+  details      Json
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([subjectType, subjectId])
+}

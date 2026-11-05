@@ -1,5 +1,6 @@
 const { randomUUID } = require("crypto");
 const prisma = require("../utils/prisma");
+const { auditEntry, ticketSnapshot } = require("../utils/deletionAudit");
 const {
   siteScope, canAccessSite,
   categories,
@@ -334,10 +335,67 @@ exports.assignments = handle(async (req, res) => {
   });
   res.json(tickets.map((ticket) => sanitize(ticket, req.user)));
 });
+// Deletion is committed only if its historical snapshot is saved in the
+// same transaction. HQ and operators may delete one ticket; only operators
+// retain the existing destructive bulk action.
+const deletionInclude = {
+  branch: true,
+  requester: { select: { id: true, name: true } },
+  assignee: { select: { id: true, name: true, role: true } },
+  comments: {
+    include: { author: { select: { name: true, role: true } } },
+    orderBy: { createdAt: "asc" },
+  },
+};
+
+exports.deletionLog = handle(async (req, res) => {
+  if (!["HQ_ADMIN", "OPERATOR"].includes(req.user.role))
+    return res.status(403).json({ message: "Deletion history is restricted to HQ and operators" });
+  res.json(await prisma.deletionAudit.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  }));
+});
+
+exports.deleteOne = handle(async (req, res) => {
+  if (!["HQ_ADMIN", "OPERATOR"].includes(req.user.role))
+    return res.status(403).json({ message: "Only HQ and operators can delete tickets" });
+  if (req.body?.confirmation !== "DELETE TICKET")
+    fail("Type DELETE TICKET to confirm");
+  const reference = await prisma.$transaction(async (tx) => {
+    const ticket = await tx.ticket.findUnique({
+      where: { id: req.params.id }, include: deletionInclude,
+    });
+    if (!ticket)
+      throw Object.assign(new Error("Ticket not found"), { status: 404 });
+    await tx.deletionAudit.create({
+      data: auditEntry(req.user, "DELETE_TICKET", "TICKET", ticket.id,
+        ticket.reference, ticketSnapshot(ticket)),
+    });
+    await tx.ticket.delete({ where: { id: ticket.id } });
+    return ticket.reference;
+  });
+  res.json({ message: `Ticket ${reference} deleted. Its complete history was archived in the deletion log.` });
+});
+
 exports.deleteAll = handle(async (req, res) => {
-  if (req.user.role !== "OPERATOR") return res.status(403).json({ message: "Only operators can delete ticket data" });
-  if (req.body?.confirmation !== "DELETE ALL TICKETS") fail("Type DELETE ALL TICKETS to confirm");
-  // Comments cascade with their ticket in the same database statement.
-  const result = await prisma.ticket.deleteMany({});
-  res.json({ count: result.count, message: `${result.count} tickets and their comments deleted` });
+  if (req.user.role !== "OPERATOR")
+    return res.status(403).json({ message: "Only operators can delete all ticket data" });
+  if (req.body?.confirmation !== "DELETE ALL TICKETS")
+    fail("Type DELETE ALL TICKETS to confirm");
+  const count = await prisma.$transaction(async (tx) => {
+    const tickets = await tx.ticket.findMany({ include: deletionInclude });
+    if (tickets.length) {
+      await tx.deletionAudit.createMany({
+        data: tickets.map((ticket) =>
+          auditEntry(req.user, "DELETE_TICKET", "TICKET", ticket.id,
+            ticket.reference, ticketSnapshot(ticket))),
+      });
+    }
+    const result = await tx.ticket.deleteMany({});
+    if (result.count !== tickets.length)
+      throw Object.assign(new Error("Ticket data changed during deletion; no tickets were deleted"), { status: 409 });
+    return result.count;
+  }, { timeout: 30000 });
+  res.json({ count, message: `${count} tickets deleted. Ticket and comment history archived in the deletion log.` });
 });
