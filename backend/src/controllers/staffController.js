@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../utils/prisma");
+const { auditEntry, userSnapshot } = require("../utils/deletionAudit");
 const { zones, zoneOf, fail, siteScope, siteIdsOf } = require("../utils/ticketing");
 const { parseStaffCsv } = require("../utils/staffCsv");
 const select = {
@@ -246,43 +247,64 @@ exports.assignTechnician = handle(async (req, res) => {
   res.json(await prisma.user.findUnique({ where: { id: target.id }, select }));
 });
 
+function requireDeletionManager(user) {
+  if (!["OPERATOR", "HQ_ADMIN"].includes(user.role))
+    throw Object.assign(new Error("Only HQ and operators can delete accounts"), { status: 403 });
+}
+
 exports.remove = handle(async (req, res) => {
-  requireOperator(req.user);
-  if (req.params.id === req.user.id) return res.status(403).json({ message: "You cannot delete your own operator account" });
+  requireDeletionManager(req.user);
+  if (req.params.id === req.user.id)
+    return res.status(403).json({ message: "You cannot delete your own account" });
   if (req.body?.confirmation !== "DELETE USER") fail("Type DELETE USER to confirm");
   await deletionTransaction(async (tx) => {
-    const target = await tx.user.findUnique({ where: { id: req.params.id } });
-    if (!target) throw Object.assign(new Error("User not found"), { status: 404 });
-    if (target.role === "OPERATOR") throw Object.assign(new Error("Operator accounts cannot be deleted here"), { status: 403 });
+    const allowed = staffScope(req.user);
+    const target = await tx.user.findFirst({ where: { id: req.params.id, ...allowed } });
+    if (!target)
+      throw Object.assign(new Error("User not found or cannot be deleted by your role"), { status: 404 });
+    if (target.role === "OPERATOR" || (req.user.role === "HQ_ADMIN" && target.role === "HQ_ADMIN"))
+      throw Object.assign(new Error("You cannot delete this account"), { status: 403 });
+    await tx.deletionAudit.create({
+      data: auditEntry(req.user, "DELETE_USER", "USER", target.id,
+        target.name, userSnapshot(target)),
+    });
     await tx.ticket.updateMany({ where: { assigneeId: target.id }, data: { assigneeId: null, escalatedAt: null } });
-    // Nullable relations retain ticket and comment history after account deletion.
-    await tx.user.delete({ where: { id: target.id } });
+    const deleted = await tx.user.deleteMany({ where: { id: target.id, ...allowed } });
+    if (deleted.count !== 1)
+      throw Object.assign(new Error("Account access changed. No account was deleted."), { status: 409 });
   });
-  res.json({ message: "User deleted. Ticket and comment history retained." });
+  res.json({ message: "Account deleted. Its metadata was archived; tickets and comments remain." });
 });
 
 exports.removeMany = handle(async (req, res) => {
-  requireOperator(req.user);
+  requireDeletionManager(req.user);
   if (req.body?.confirmation !== "DELETE USERS") fail("Type DELETE USERS to confirm");
   const ids = req.body.userIds;
   if (!Array.isArray(ids) || !ids.length || ids.some((id) => typeof id !== "string" || !id.trim()))
     fail("Select at least one user to delete");
   const userIds = [...new Set(ids)];
   if (userIds.includes(req.user.id))
-    return res.status(403).json({ message: "You cannot delete your own operator account" });
+    return res.status(403).json({ message: "You cannot delete your own account" });
   const count = await deletionTransaction(async (tx) => {
-    const targets = await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, role: true } });
-    if (targets.some((target) => target.role === "OPERATOR"))
-      throw Object.assign(new Error("Operator accounts cannot be deleted here"), { status: 403 });
+    const allowed = staffScope(req.user);
+    const targets = await tx.user.findMany({
+      where: { id: { in: userIds }, ...allowed },
+    });
+    if (targets.some((target) => target.role === "OPERATOR" ||
+      (req.user.role === "HQ_ADMIN" && target.role === "HQ_ADMIN")))
+      throw Object.assign(new Error("Protected accounts cannot be deleted"), { status: 403 });
     if (targets.length !== userIds.length)
-      throw Object.assign(new Error("Some selected users no longer exist. Refresh the list and retry; no users were deleted."), { status: 409 });
+      throw Object.assign(new Error("Some accounts are missing or outside your permission. No accounts were deleted."), { status: 409 });
+    await tx.deletionAudit.createMany({
+      data: targets.map((target) =>
+        auditEntry(req.user, "DELETE_USER", "USER", target.id,
+          target.name, userSnapshot(target))),
+    });
     await tx.ticket.updateMany({ where: { assigneeId: { in: userIds } }, data: { assigneeId: null, escalatedAt: null } });
-    // Existing nullable relations retain ticket and comment authorship history.
-    // Recheck role at deletion time; a concurrent promotion rolls back the entire batch.
-    const result = await tx.user.deleteMany({ where: { id: { in: userIds }, role: { not: "OPERATOR" } } });
+    const result = await tx.user.deleteMany({ where: { id: { in: userIds }, ...allowed } });
     if (result.count !== userIds.length)
-      throw Object.assign(new Error("Selected accounts changed. Refresh and retry; no users were deleted."), { status: 409 });
+      throw Object.assign(new Error("Selected accounts changed. No accounts were deleted."), { status: 409 });
     return result.count;
   });
-  res.json({ count, message: `${count} user${count === 1 ? "" : "s"} deleted. Ticket and comment history retained.` });
+  res.json({ count, message: `${count} account${count === 1 ? "" : "s"} deleted. Metadata archived; tickets and comments remain.` });
 });
