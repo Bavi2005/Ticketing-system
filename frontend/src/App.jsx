@@ -5,6 +5,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowUpRight,
+  Download,
+  FileText,
+  Image,
+  Paperclip,
   BellRing,
   Building2,
   BarChart3,
@@ -75,6 +79,36 @@ const dateText = (value) =>
     dateStyle: "medium",
     timeStyle: "short",
   });
+const API_BASE = import.meta.env.VITE_API || "";
+const isImage = (mime) => mime?.startsWith("image/");
+const fileUrl = (filename) => `${API_BASE}/uploads/${filename}`;
+function AttachmentList({ attachments }) {
+  if (!attachments?.length) return null;
+  return (
+    <div className="attachment-list">
+      {attachments.map((a) => (
+        <div key={a.id} className="attachment-item">
+          {isImage(a.mimeType) ? (
+            <a href={fileUrl(a.filename)} target="_blank" rel="noopener noreferrer" className="attachment-thumb">
+              <img src={fileUrl(a.filename)} alt={a.originalName} />
+            </a>
+          ) : (
+            <a href={fileUrl(a.filename)} target="_blank" rel="noopener noreferrer" className="attachment-file">
+              <FileText size={20} />
+              <span>{a.originalName}</span>
+            </a>
+          )}
+          <div className="attachment-actions">
+            <small>{a.originalName}</small>
+            <a href={fileUrl(a.filename)} download={a.originalName} className="attachment-download" onClick={(e) => e.stopPropagation()}>
+              <Download size={14} /> Download
+            </a>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 const dateKey = (d) => d.toISOString().slice(0, 10);
 function rangeFor(preset) {
   // Work with calendar dates in Malaysia (UTC+8), matching the API boundaries.
@@ -1409,6 +1443,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     branchId: user.branchId || "",
     escalate: false,
   });
+  const [files, setFiles] = useState([]);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const effectiveZone = form.zone ?? own?.zone ?? "";
@@ -1421,10 +1456,19 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     setBusy(true);
     setError("");
     try {
+      const fd = new FormData();
+      fd.append("title", form.title);
+      fd.append("description", form.description);
+      fd.append("category", form.category);
+      fd.append("priority", form.priority);
+      fd.append("zone", effectiveZone);
+      fd.append("branchId", form.branchId);
+      if (form.escalate) fd.append("escalate", "true");
+      files.forEach((f) => fd.append("attachments", f));
       const { data } = await api.post(
         "/api/tickets",
-        { ...form, zone: effectiveZone, escalate: form.escalate || undefined },
-        { headers },
+        fd,
+        { headers: { ...headers, "Content-Type": "multipart/form-data" } },
       );
       done(
         `${data.reference} created for ${data.branch.name}.`,
@@ -1536,6 +1580,26 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
             {...field("description")}
           />
         </label>
+        <label className="file-upload-label">
+          <Paperclip size={16} /> Attach files (images, PDF, documents — max 5)
+          <input
+            type="file"
+            multiple
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+            onChange={(e) => setFiles([...e.target.files].slice(0, 5))}
+          />
+        </label>
+        {files.length > 0 && (
+          <div className="file-preview-list">
+            {files.map((f, i) => (
+              <div key={i} className="file-preview-item">
+                {f.type.startsWith("image/") ? <Image size={16} /> : <FileText size={16} />}
+                <span>{f.name}</span>
+                <button type="button" className="icon-button" onClick={() => setFiles(files.filter((_, j) => j !== i))}><X size={14} /></button>
+              </div>
+            ))}
+          </div>
+        )}
         <label className="checkbox" style={{ cursor: "pointer" }}>
           <input
             type="checkbox"
@@ -1601,6 +1665,7 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
     [branch, setBranch] = useState(ticket.branchId),
     [priority, setPriority] = useState(ticket.priority),
     [comment, setComment] = useState(""),
+    [commentFiles, setCommentFiles] = useState([]),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const dialog = useRef(null);
@@ -1641,13 +1706,18 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
           ).data,
         );
       else {
+        const fd = new FormData();
+        fd.append("message", comment);
+        fd.append("internal", "false");
+        commentFiles.forEach((f) => fd.append("attachments", f));
         const { data } = await api.post(
           `/api/tickets/${current.id}/comments`,
-          { message: comment, internal: false },
-          { headers },
+          fd,
+          { headers: { ...headers, "Content-Type": "multipart/form-data" } },
         );
         setCurrent((t) => ({ ...t, comments: [...t.comments, data] }));
         setComment("");
+        setCommentFiles([]);
       }
       changed();
     } catch (e) {
@@ -1875,6 +1945,12 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
           )}
         </section>
       )}
+      {current.attachments?.length > 0 && (
+        <>
+          <h3>Attachments</h3>
+          <AttachmentList attachments={current.attachments} />
+        </>
+      )}
       <h3>Activity & updates</h3>
       <div className="comments">
         {current.comments.length ? (
@@ -1888,6 +1964,7 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
                 </small>
               </div>
               <p>{c.message}</p>
+              <AttachmentList attachments={c.attachments} />
             </article>
           ))
         ) : (
@@ -1910,6 +1987,26 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
             placeholder="Share progress or add context…"
           />
         </label>
+        <label className="file-upload-label">
+          <Paperclip size={16} /> Attach files
+          <input
+            type="file"
+            multiple
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+            onChange={(e) => setCommentFiles([...e.target.files].slice(0, 5))}
+          />
+        </label>
+        {commentFiles.length > 0 && (
+          <div className="file-preview-list">
+            {commentFiles.map((f, i) => (
+              <div key={i} className="file-preview-item">
+                {f.type.startsWith("image/") ? <Image size={16} /> : <FileText size={16} />}
+                <span>{f.name}</span>
+                <button type="button" className="icon-button" onClick={() => setCommentFiles(commentFiles.filter((_, j) => j !== i))}><X size={14} /></button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="form-actions">
           <button className="primary" disabled={busy || !comment.trim()}>
             Post update <ArrowUpRight size={15} />

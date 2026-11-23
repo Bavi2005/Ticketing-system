@@ -4217,6 +4217,126 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
   white-space: nowrap;
 }
 
+/* File upload & attachments */
+.file-upload-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.file-upload-label:hover {
+  border-color: var(--text-purple);
+  background: var(--purple-soft);
+  color: var(--text-purple);
+}
+.file-upload-label input[type="file"] {
+  display: none;
+}
+.file-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.file-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.file-preview-item span {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.attachment-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+.attachment-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16/10;
+  overflow: hidden;
+}
+.attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.2s;
+}
+.attachment-thumb:hover img {
+  transform: scale(1.05);
+}
+.attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px;
+  color: var(--text-purple);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+}
+.attachment-file:hover {
+  background: var(--purple-soft);
+}
+.attachment-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+.attachment-actions small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.attachment-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-purple);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.attachment-download:hover {
+  background: var(--purple-soft);
+}
+
 /* Clickable ticket rows */
 .ticket-row:hover {
   background: var(--surface-soft);

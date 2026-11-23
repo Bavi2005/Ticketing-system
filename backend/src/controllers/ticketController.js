@@ -19,8 +19,9 @@ const include = {
   branch: true,
   requester: { select: { id: true, name: true } },
   assignee: { select: { id: true, name: true, role: true } },
+  attachments: true,
   comments: {
-    include: { author: { select: { name: true, role: true } } },
+    include: { author: { select: { name: true, role: true } }, attachments: true },
     orderBy: { createdAt: "asc" },
   },
 };
@@ -193,6 +194,20 @@ exports.create = handle(async (req, res) => {
     data: ticketData,
     include,
   });
+  if (req.files?.length) {
+    await prisma.attachment.createMany({
+      data: req.files.map((f) => ({
+        filename: f.filename,
+        originalName: f.originalname,
+        mimeType: f.mimetype,
+        size: f.size,
+        ticketId: ticket.id,
+        uploaderId: req.user.id,
+      })),
+    });
+    const full = await prisma.ticket.findUnique({ where: { id: ticket.id }, include });
+    return res.status(201).json(sanitize(full, req.user));
+  }
   res.status(201).json(sanitize(ticket, req.user));
 });
 exports.update = handle(async (req, res) => {
@@ -350,17 +365,34 @@ exports.comment = handle(async (req, res) => {
     typeof req.body.message === "string" ? req.body.message.trim() : "";
   if (!message || message.length > 5000)
     fail("Comment must contain 1–5,000 characters");
-  res.status(201).json(
-    await prisma.ticketComment.create({
-      data: {
-        ticketId: ticket.id,
-        authorId: req.user.id,
-        message,
-        internal: req.body.internal === true && req.user.role !== "STAFF",
-      },
-      include: { author: { select: { name: true, role: true } } },
-    }),
-  );
+  const internal = (req.body.internal === true || req.body.internal === "true") && req.user.role !== "STAFF";
+  const comment = await prisma.ticketComment.create({
+    data: {
+      ticketId: ticket.id,
+      authorId: req.user.id,
+      message,
+      internal,
+    },
+    include: { author: { select: { name: true, role: true } }, attachments: true },
+  });
+  if (req.files?.length) {
+    await prisma.attachment.createMany({
+      data: req.files.map((f) => ({
+        filename: f.filename,
+        originalName: f.originalname,
+        mimeType: f.mimetype,
+        size: f.size,
+        commentId: comment.id,
+        uploaderId: req.user.id,
+      })),
+    });
+    const full = await prisma.ticketComment.findUnique({
+      where: { id: comment.id },
+      include: { author: { select: { name: true, role: true } }, attachments: true },
+    });
+    return res.status(201).json(full);
+  }
+  res.status(201).json(comment);
 });
 
 // Current assignments are independent of reporting dates and dashboard filters.

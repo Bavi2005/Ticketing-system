@@ -37,6 +37,20 @@ const MIME_EXTENSIONS = {
   'application/pdf': '.pdf',
 };
 
+const TICKET_MIME_EXTENSIONS = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'text/plain': '.txt',
+  'text/csv': '.csv',
+};
+
 fs.mkdirSync(
   UPLOAD_DIR,
   {
@@ -120,7 +134,26 @@ const upload =
     },
   });
 
+const ticketStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const ext = TICKET_MIME_EXTENSIONS[file.mimetype] || '';
+    cb(null, `ticket-${suffix}${ext}`);
+  },
+});
+
+const ticketUpload = multer({
+  storage: ticketStorage,
+  fileFilter: (req, file, cb) => {
+    if (TICKET_MIME_EXTENSIONS[file.mimetype]) return cb(null, true);
+    cb(new Error('File type not supported. Use images, PDF, Word, Excel or text files.'), false);
+  },
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+});
+
 module.exports = {
   upload,
+  ticketUpload,
   UPLOAD_DIR,
 };

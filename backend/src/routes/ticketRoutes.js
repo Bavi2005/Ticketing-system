@@ -1,5 +1,6 @@
 const express = require("express");
 const { auth } = require("../middleware/auth");
+const { ticketUpload } = require("../utils/upload");
 const c = require("../controllers/ticketController");
 const router = express.Router();
 router.use(auth);
@@ -9,8 +10,8 @@ router.get("/deletion-log", c.deletionLog);
 router.delete("/", c.deleteAll);
 router.get("/dashboard", c.dashboard);
 router.get("/", c.list);
-router.post("/", c.create);
+router.post("/", ticketUpload.array("attachments", 5), c.create);
 router.patch("/:id", c.update);
 router.delete("/:id", c.deleteOne);
-router.post("/:id/comments", c.comment);
+router.post("/:id/comments", ticketUpload.array("attachments", 5), c.comment);
 module.exports = router;
