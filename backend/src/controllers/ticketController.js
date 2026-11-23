@@ -1,6 +1,7 @@
 const { randomUUID } = require("crypto");
 const prisma = require("../utils/prisma");
 const { auditEntry, ticketSnapshot } = require("../utils/deletionAudit");
+const { removeFiles } = require("../utils/attachmentStorage");
 const {
   siteScope, canAccessSite,
   categories,
@@ -426,12 +427,23 @@ exports.deletionLog = handle(async (req, res) => {
   }));
 });
 
+// Stored files for these tickets (direct and via comments), so they can be
+// removed from storage once the rows are gone.
+async function attachmentFilesFor(tx, ticketIds) {
+  if (!ticketIds.length) return [];
+  const rows = await tx.attachment.findMany({
+    where: { OR: [{ ticketId: { in: ticketIds } }, { comment: { ticketId: { in: ticketIds } } }] },
+    select: { filename: true },
+  });
+  return rows.map((r) => r.filename);
+}
+
 exports.deleteOne = handle(async (req, res) => {
   if (!["HQ_ADMIN", "OPERATOR"].includes(req.user.role))
     return res.status(403).json({ message: "Only HQ and operators can delete tickets" });
   if (req.body?.confirmation !== "DELETE TICKET")
     fail("Type DELETE TICKET to confirm");
-  const reference = await prisma.$transaction(async (tx) => {
+  const deleted = await prisma.$transaction(async (tx) => {
     const ticket = await tx.ticket.findUnique({
       where: { id: req.params.id }, include: deletionInclude,
     });
@@ -441,9 +453,12 @@ exports.deleteOne = handle(async (req, res) => {
       data: auditEntry(req.user, "DELETE_TICKET", "TICKET", ticket.id,
         ticket.reference, ticketSnapshot(ticket)),
     });
+    const files = await attachmentFilesFor(tx, [ticket.id]);
     await tx.ticket.delete({ where: { id: ticket.id } });
-    return ticket.reference;
+    return { reference: ticket.reference, files };
   });
+  await removeFiles(deleted.files);
+  const { reference } = deleted;
   res.json({ message: `Ticket ${reference} deleted. Its complete history was archived in the deletion log.` });
 });
 
@@ -452,7 +467,7 @@ exports.deleteAll = handle(async (req, res) => {
     return res.status(403).json({ message: "Only operators can delete all ticket data" });
   if (req.body?.confirmation !== "DELETE ALL TICKETS")
     fail("Type DELETE ALL TICKETS to confirm");
-  const count = await prisma.$transaction(async (tx) => {
+  const deleted = await prisma.$transaction(async (tx) => {
     const tickets = await tx.ticket.findMany({ include: deletionInclude });
     if (tickets.length) {
       await tx.deletionAudit.createMany({
@@ -461,10 +476,13 @@ exports.deleteAll = handle(async (req, res) => {
             ticket.reference, ticketSnapshot(ticket))),
       });
     }
+    const files = await attachmentFilesFor(tx, tickets.map((t) => t.id));
     const result = await tx.ticket.deleteMany({});
     if (result.count !== tickets.length)
       throw Object.assign(new Error("Ticket data changed during deletion; no tickets were deleted"), { status: 409 });
-    return result.count;
+    return { count: result.count, files };
   }, { timeout: 30000 });
+  await removeFiles(deleted.files);
+  const { count } = deleted;
   res.json({ count, message: `${count} tickets deleted. Ticket and comment history archived in the deletion log.` });
 });

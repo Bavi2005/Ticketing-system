@@ -22,6 +22,8 @@ const morgan = require('morgan');
 const {
   UPLOAD_DIR,
 } = require('./utils/upload');
+const attachmentStorage =
+  require('./utils/attachmentStorage');
 
 const app = express();
 
@@ -109,8 +111,15 @@ app.use(
   }
 );
 
-// Receipt files use the exact same
-// directory Multer writes to.
+// Attachments: in production they live in a private Supabase Storage
+// bucket and are streamed through here; otherwise served from UPLOAD_DIR.
+if (attachmentStorage.remoteEnabled) {
+  app.get(
+    '/uploads/:filename',
+    attachmentStorage.serveRemote
+  );
+}
+
 app.use(
   '/uploads',
   (req, res, next) => {

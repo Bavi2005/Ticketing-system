@@ -86,7 +86,42 @@ const errorHandler = (
       .status(400)
       .json({
         message:
-          'Only one receipt file can be uploaded',
+          'Too many files. Attach up to 5 files at a time.',
+      });
+  }
+
+  // Multer: wrong field name or extra files beyond the array limit.
+  if (
+    err.code ===
+    'LIMIT_UNEXPECTED_FILE'
+  ) {
+    return res
+      .status(400)
+      .json({
+        message:
+          'Too many files. Attach up to 5 files at a time.',
+      });
+  }
+
+  if (
+    typeof err.message === 'string' &&
+    err.message.startsWith('File type not supported')
+  ) {
+    return res
+      .status(400)
+      .json({ message: err.message });
+  }
+
+  if (
+    typeof err.message === 'string' &&
+    err.message.startsWith('Attachment upload failed')
+  ) {
+    console.error(err.message);
+    return res
+      .status(502)
+      .json({
+        message:
+          'Could not store the attachment. Please try again.',
       });
   }
 

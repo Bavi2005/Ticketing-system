@@ -51,8 +51,10 @@ node proxy.js               # app on :8080
 
 - CORS origins default to `CLIENT_URL`; override with `CORS_ORIGINS`
   (comma-separated) when the frontend and API live on different origins.
-- Receipt files are stored on disk under `backend/uploads`. For production this
-  should move to object storage (S3 / Supabase Storage / Cloudflare R2).
+- Ticket attachments are stored in the private Supabase Storage bucket
+  `ticket-attachments` when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are
+  set (required on Render). Without them, files go to `backend/uploads`, which
+  Render wipes on every deploy.
 ## Operator accounts and staff upgrade (October 2026)
 
 For an existing EngineDesk database, run the additive SQL in
@@ -226,3 +228,24 @@ assignments); “All sites” includes all current and future sites across regio
 HQ can edit manager regions/sites in Account access. Managers can edit technician
 site access or use Assign technician to sites. CSV site_code and region cells support
 semicolon-separated values; technician site_code `*` means all sites.
+
+
+## Ticket attachments (24 November 2026)
+
+**Do not run `npx prisma migrate deploy` against this database.** The files in
+`backend/prisma/migrations` belong to the old receipt app; schema changes are
+applied with the additive SQL in `backend/prisma/upgrades/`. (Running a global
+Prisma 7 CLI also fails on this schema with error P1012; the project pins
+Prisma 5 in `backend/package.json`, so run `npm install` in `backend` first.)
+
+1. Run `backend/prisma/upgrades/20261124_attachments.sql` in the Supabase SQL
+   Editor. It creates the `Attachment` table with RLS enabled and direct
+   access revoked. It is repeatable and deletes nothing.
+2. Create a **private** Storage bucket named `ticket-attachments` (10 MB file
+   limit).
+3. In Render → Environment, set `SUPABASE_URL` (`https://<ref>.supabase.co`)
+   and `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API keys →
+   service_role / secret key). Redeploy.
+
+The browser still requests `/uploads/<filename>`; the backend streams the file
+from the private bucket. Deleting tickets also deletes their stored files.

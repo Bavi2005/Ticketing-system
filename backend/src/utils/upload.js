@@ -134,17 +134,10 @@ const upload =
     },
   });
 
-const ticketStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = TICKET_MIME_EXTENSIONS[file.mimetype] || '';
-    cb(null, `ticket-${suffix}${ext}`);
-  },
-});
-
+// Ticket attachments are buffered in memory, then written by
+// persistTicketFiles() to Supabase Storage (production) or UPLOAD_DIR (local).
 const ticketUpload = multer({
-  storage: ticketStorage,
+  storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
     if (TICKET_MIME_EXTENSIONS[file.mimetype]) return cb(null, true);
     cb(new Error('File type not supported. Use images, PDF, Word, Excel or text files.'), false);
@@ -152,8 +145,32 @@ const ticketUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024, files: 5 },
 });
 
+// Runs after ticketUpload.array(): gives every file a generated name and
+// saves its bytes. Controllers keep using f.filename / f.originalname / f.size.
+const persistTicketFiles = async (req, res, next) => {
+  const files = req.files || [];
+  if (!files.length) return next();
+  // Required lazily to avoid a circular import (attachmentStorage needs UPLOAD_DIR).
+  const { saveFile, removeFiles } = require('./attachmentStorage');
+  const saved = [];
+  try {
+    for (const f of files) {
+      const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      f.filename = `ticket-${suffix}${TICKET_MIME_EXTENSIONS[f.mimetype] || ''}`;
+      await saveFile(f.filename, f.buffer, f.mimetype);
+      saved.push(f.filename);
+      f.buffer = undefined;
+    }
+    next();
+  } catch (err) {
+    await removeFiles(saved);
+    next(err);
+  }
+};
+
 module.exports = {
   upload,
   ticketUpload,
+  persistTicketFiles,
   UPLOAD_DIR,
 };
