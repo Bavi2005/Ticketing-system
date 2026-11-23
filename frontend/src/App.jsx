@@ -1848,14 +1848,6 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
             <button className="primary" disabled={busy}>
               Save assignment
             </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={() => save("escalate")}
-            >
-              Assign to HQ
-            </button>
           </div>
         </form>
       )}
