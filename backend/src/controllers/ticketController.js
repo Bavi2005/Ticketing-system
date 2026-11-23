@@ -168,6 +168,7 @@ exports.create = handle(async (req, res) => {
     acknowledgedAt: new Date(now),
     branchId: branch.id,
     requesterId: req.user.id,
+    assigneeId: req.user.id,
     responseDueAt: new Date(now + respond * 3600000),
     resolutionDueAt: new Date(now + resolve * 3600000),
   };

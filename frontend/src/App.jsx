@@ -60,13 +60,7 @@ const metrics = [
   ["within", "Total Within SLA", ShieldCheck, "violet"],
 ];
 const label = (value) => value.replaceAll("_", " ").toLowerCase();
-const maskReference = (ref, userRole) => {
-  if (["OPERATOR"].includes(userRole)) return ref;
-  if (!ref) return "";
-  const parts = ref.split("-");
-  if (parts.length < 2) return ref;
-  return `${parts[0]}-${"•".repeat(parts[1].length)}`;
-};
+const maskReference = (ref) => ref || "";
 const initials = (name = "") =>
   name
     .split(/\s+/)
@@ -1344,27 +1338,24 @@ function TicketList({ tickets, open, compact, userRole }) {
           </thead>
           <tbody>
             {shown.map((t) => (
-              <tr key={t.id}>
+              <tr key={t.id} className="ticket-row" onClick={() => open(t)} style={{ cursor: "pointer" }}>
                 <td>
-                  <button className="ticket-link" onClick={() => open(t)}>
+                  <div className="ticket-link">
                     <span>
                       <i
                         className={`priority-dot ${t.priority.toLowerCase()}`}
                       />
-                      <span className={userRole === "OPERATOR" ? "reference-full" : "reference-masked"}>
-                        {maskReference(t.reference, userRole)}
-                      </span>
-                      <span className={`priority-text ${t.priority.toLowerCase()}`}>{label(t.priority)}</span>
+                      <span className="reference-full">{t.reference}</span>
                     </span>
                     <b>{t.title}</b>
-                  </button>
+                  </div>
                 </td>
                 <td data-label="Site / system">
                   {t.branch?.name}
                   <small>{t.category}</small>
                 </td>
                 <td data-label="Status">
-                  <span className={`badge ${t.status.toLowerCase()}`}>
+                  <span className={`status-badge ${t.status.toLowerCase()}`}>
                     {label(t.status)}
                   </span>
                 </td>
@@ -1384,13 +1375,7 @@ function TicketList({ tickets, open, compact, userRole }) {
                   </span>
                 </td>
                 <td>
-                  <button
-                    className="icon-button"
-                    onClick={() => open(t)}
-                    aria-label={`Open ${t.reference}`}
-                  >
-                    <ArrowUpRight size={16} />
-                  </button>
+                  <ArrowUpRight size={16} className="row-arrow" />
                 </td>
               </tr>
             ))}
@@ -1515,7 +1500,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
               <option value="" disabled>
                 Select region
               </option>
-              {(metadata?.zones || []).map((z) => (
+              {[...(metadata?.zones || [])].sort().map((z) => (
                 <option key={z}>{z}</option>
               ))}
             </select>
@@ -1531,8 +1516,9 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
               <option value="" disabled>
                 Select site
               </option>
-              {metadata?.submissionBranches
+              {[...(metadata?.submissionBranches || [])]
                 .filter((b) => b.zone === effectiveZone)
+                .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                 .map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -1706,9 +1692,7 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
         <X size={22} />
       </button>
       <p className="eyebrow">
-        <span className={userRole === "OPERATOR" ? "reference-full" : "reference-masked"}>
-          {maskReference(current.reference, userRole)}
-        </span> / {current.category}
+        <span className="reference-full">{current.reference}</span> / {current.category}
       </p>
       <h2 id="ticket-title">{current.title}</h2>
       <div className="tags">
@@ -1733,6 +1717,14 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
         <div>
           Raised by<b>{current.requester?.name || "Deleted user"}</b>
         </div>
+        <div>
+          Assigned to<b>{current.assignee ? `${current.assignee.name}${current.assignee.role === "HQ_ADMIN" ? " (HQ)" : ""}` : "You"}</b>
+        </div>
+        {current.resolvedAt && (
+          <div>
+            Resolved by<b>{current.assignee?.name || current.requester?.name || "—"}</b>
+          </div>
+        )}
         <div>
           Created<b>{dateText(current.createdAt)}</b>
         </div>
@@ -1798,9 +1790,6 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
           SLA paused since {dateText(current.waitingSince)}.
         </p>
       )}
-      <p className="notice" role="status">
-        {current.assignee ? `Assigned to ${current.assignee.name}${current.assignee.role === "HQ_ADMIN" ? " (HQ)" : ""}${current.assigneeId === userId ? " · You" : ""}` : "Unassigned"}
-      </p>
       {manager && (
         <form
           className="assignment-form"
@@ -1819,7 +1808,7 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
                   setAssignment("");
                 }}
               >
-                {metadata?.branches.map((b) => (
+                {[...(metadata?.branches || [])].sort((a, b) => (a.zone || "").localeCompare(b.zone || "") || (a.name || "").localeCompare(b.name || "")).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.zone} · {b.name}
                   </option>
