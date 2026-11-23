@@ -1787,6 +1787,30 @@ footer > span:first-child {
 .ticket-dialog .eyebrow {
   padding-right: 24px;
 }
+.ticket-header-ref {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+  padding-right: 30px;
+}
+.ticket-ref-code {
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--text-purple);
+  background: var(--purple-soft);
+  padding: 6px 14px;
+  border-radius: 8px;
+}
+.ticket-ref-cat {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
 .tags {
   display: flex;
   align-items: center;

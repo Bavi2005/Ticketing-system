@@ -1691,9 +1691,10 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
       >
         <X size={22} />
       </button>
-      <p className="eyebrow">
-        <span className="reference-full">{current.reference}</span> / {current.category}
-      </p>
+      <div className="ticket-header-ref">
+        <span className="ticket-ref-code">{current.reference}</span>
+        <span className="ticket-ref-cat">{current.category}</span>
+      </div>
       <h2 id="ticket-title">{current.title}</h2>
       <div className="tags">
         <span className={`badge ${current.status.toLowerCase()}`}>
