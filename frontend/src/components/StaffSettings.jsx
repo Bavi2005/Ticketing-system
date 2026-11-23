@@ -27,7 +27,7 @@ function AccessDialog({ children, title, close }) {
 
 export default function StaffSettings({ api, headers, user, metadata }) {
   const operator = user.role === "OPERATOR", siteManager = user.role === "BRANCH_MANAGER";
-  const canDelete = operator || user.role === "HQ_ADMIN";
+  const canDelete = operator || user.role === "HQ_ADMIN" || siteManager;
   const canCreate = ["OPERATOR", "HQ_ADMIN", "BRANCH_MANAGER"].includes(user.role);
   const [staff, setStaff] = useState([]), [search, setSearch] = useState("");
   const [editor, setEditor] = useState(null), [form, setForm] = useState(blank);

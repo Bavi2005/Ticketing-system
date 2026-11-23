@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import axios from "axios";
 import {
   Activity,
+  AlertTriangle,
   ArrowLeft,
   ArrowUpRight,
   BellRing,
@@ -59,6 +60,13 @@ const metrics = [
   ["within", "Total Within SLA", ShieldCheck, "violet"],
 ];
 const label = (value) => value.replaceAll("_", " ").toLowerCase();
+const maskReference = (ref, userRole) => {
+  if (["OPERATOR"].includes(userRole)) return ref;
+  if (!ref) return "";
+  const parts = ref.split("-");
+  if (parts.length < 2) return ref;
+  return `${parts[0]}-${"•".repeat(parts[1].length)}`;
+};
 const initials = (name = "") =>
   name
     .split(/\s+/)
@@ -757,12 +765,13 @@ export default function App() {
                                   !category || ticket.category === category,
                               )}
                               open={setSelected}
+                              userRole={session.user.role}
                               compact
                             />
                           </section>
                         )
                       ) : page === "tickets" ? (
-                        <TicketList tickets={data.tickets} open={setSelected} />
+                        <TicketList tickets={data.tickets} open={setSelected} userRole={session.user.role} />
                       ) : null}
                     </div>
                   )
@@ -799,6 +808,7 @@ export default function App() {
           manager={manager}
           canDelete={hq || operator}
           userId={session.user.id}
+          userRole={session.user.role}
           metadata={metadata}
           headers={headers}
           close={() => setSelected(null)}
@@ -1267,7 +1277,7 @@ function SlaHealth({ summary, resolution = false }) {
     </section>
   );
 }
-function TicketList({ tickets, open, compact }) {
+function TicketList({ tickets, open, compact, userRole }) {
   const [search, setSearch] = useState(""),
     [status, setStatus] = useState(""),
     [priority, setPriority] = useState("");
@@ -1325,6 +1335,7 @@ function TicketList({ tickets, open, compact }) {
               <th>Service request</th>
               <th>Site / system</th>
               <th>Status</th>
+              <th>Priority</th>
               <th>SLA</th>
               <th>
                 <span className="sr-only">Open</span>
@@ -1340,8 +1351,10 @@ function TicketList({ tickets, open, compact }) {
                       <i
                         className={`priority-dot ${t.priority.toLowerCase()}`}
                       />
-                      {t.reference}
-                      <span className="priority-text">{label(t.priority)}</span>
+                      <span className={userRole === "OPERATOR" ? "reference-full" : "reference-masked"}>
+                        {maskReference(t.reference, userRole)}
+                      </span>
+                      <span className={`priority-text ${t.priority.toLowerCase()}`}>{label(t.priority)}</span>
                     </span>
                     <b>{t.title}</b>
                   </button>
@@ -1355,8 +1368,14 @@ function TicketList({ tickets, open, compact }) {
                     {label(t.status)}
                   </span>
                 </td>
+                <td data-label="Priority">
+                  <span className={`severity-badge ${t.priority.toLowerCase()}`}>
+                    <i className={`priority-dot ${t.priority.toLowerCase()}`} />
+                    {label(t.priority)}
+                  </span>
+                </td>
                 <td data-label="SLA">
-                  <span className={t.slaMissed ? "rose" : "lavender"}>
+                  <span className={t.slaMissed ? "sla-missed" : "sla-within"}>
                     {t.slaMissed
                       ? "Missed SLA"
                       : ["RESOLVED", "CLOSED"].includes(t.status)
@@ -1403,6 +1422,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     priority: "MEDIUM",
     zone: null,
     branchId: user.branchId || "",
+    escalate: false,
   });
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -1418,7 +1438,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     try {
       const { data } = await api.post(
         "/api/tickets",
-        { ...form, zone: effectiveZone },
+        { ...form, zone: effectiveZone, escalate: form.escalate || undefined },
         { headers },
       );
       done(
@@ -1471,7 +1491,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
           </label>
           <label>
             Priority
-            <select aria-label="Priority" {...field("priority")}>
+            <select aria-label="Priority" {...field("priority")} style={{ borderLeft: `4px solid var(--severity-${form.priority.toLowerCase()})` }}>
               {priorities.map((p) => (
                 <option key={p} value={p}>
                   {label(p)}
@@ -1530,6 +1550,15 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
             {...field("description")}
           />
         </label>
+        <label className="checkbox" style={{ cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={form.escalate}
+            onChange={(e) => setForm({ ...form, escalate: e.target.checked })}
+          />
+          <AlertTriangle size={16} style={{ color: "var(--severity-high)" }} />
+          Escalate immediately to site manager
+        </label>
         <div className="form-actions">
           <button type="button" className="secondary" onClick={cancel}>
             Cancel
@@ -1553,13 +1582,16 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
           you submit.
         </p>
         {[
-          ["Critical", "1 hour", "4 hours"],
-          ["High", "4 hours", "12 hours"],
-          ["Medium", "8 hours", "24 hours"],
-          ["Low", "24 hours", "72 hours"],
-        ].map(([p, a, r]) => (
+          ["Critical", "1 hour", "4 hours", "var(--severity-critical)"],
+          ["High", "4 hours", "12 hours", "var(--severity-high)"],
+          ["Medium", "8 hours", "24 hours", "var(--severity-medium)"],
+          ["Low", "24 hours", "72 hours", "var(--severity-low)"],
+        ].map(([p, a, r, color]) => (
           <div key={p} className="sla-guide">
-            <b>{p}</b>
+            <b style={{ color, display: "flex", alignItems: "center", gap: 8 }}>
+              <i className={`priority-dot ${p.toLowerCase()}`} />
+              {p}
+            </b>
             <span>
               Response <strong>{a}</strong>
             </span>
@@ -1576,7 +1608,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     </div>
   );
 }
-function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, close, changed }) {
+function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, headers, close, changed }) {
   const [current, setCurrent] = useState(ticket),
     [status, setStatus] = useState(ticket.status),
     [assignment, setAssignment] = useState(ticket.assigneeId || ""),
@@ -1606,7 +1638,7 @@ function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, cl
     setBusy(true);
     setError("");
     try {
-      if (["status", "assignment", "escalate"].includes(type))
+      if (["status", "assignment", "escalate", "escalate-manager"].includes(type))
         setCurrent(
           (
             await api.patch(
@@ -1615,7 +1647,9 @@ function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, cl
                 ? { status }
                 : type === "escalate"
                   ? { escalateToHq: true }
-                  : { assigneeId: assignment, priority, branchId: branch },
+                  : type === "escalate-manager"
+                    ? { escalateToManager: true }
+                    : { assigneeId: assignment, priority, branchId: branch },
               { headers },
             )
           ).data,
@@ -1672,16 +1706,24 @@ function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, cl
         <X size={22} />
       </button>
       <p className="eyebrow">
-        {current.reference} / {current.category}
+        <span className={userRole === "OPERATOR" ? "reference-full" : "reference-masked"}>
+          {maskReference(current.reference, userRole)}
+        </span> / {current.category}
       </p>
       <h2 id="ticket-title">{current.title}</h2>
       <div className="tags">
         <span className={`badge ${current.status.toLowerCase()}`}>
           {label(current.status)}
         </span>
-        <span className={`priority-text ${current.priority.toLowerCase()}`}>
+        <span className={`severity-badge ${current.priority.toLowerCase()}`}>
+          <i className={`priority-dot ${current.priority.toLowerCase()}`} />
           {label(current.priority)} priority
         </span>
+        {current.escalatedAt && (
+          <span className="escalation-badge to-hq">
+            <AlertTriangle size={14} /> Escalated
+          </span>
+        )}
       </div>
       <p className="ticket-description">{current.description}</p>
       <div className="ticket-facts">
@@ -1730,6 +1772,26 @@ function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, cl
             Save status
           </button>
         </form>
+      )}
+      {!manager && !["RESOLVED", "CLOSED"].includes(current.status) && (
+        <div className="staff-actions" style={{ marginBottom: 16 }}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => save("escalate-manager")}
+          >
+            <AlertTriangle size={16} /> Escalate to manager
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => save("escalate")}
+          >
+            <AlertTriangle size={16} /> Escalate to HQ
+          </button>
+        </div>
       )}
       {current.waitingSince && (
         <p className="notice">

@@ -25,6 +25,6 @@ router.post("/assign-technician", importLimit, c.assignTechnician);
 router.post("/", importLimit, c.create);
 router.post("/import", importLimit, c.importCsv);
 router.patch("/:id", c.update);
-router.delete("/", (req, res, next) => ["OPERATOR", "HQ_ADMIN"].includes(req.user.role) ? next() : res.status(403).json({ message: "Only HQ and operators can delete accounts" }), importLimit, c.removeMany);
-router.delete("/:id", (req, res, next) => ["OPERATOR", "HQ_ADMIN"].includes(req.user.role) ? next() : res.status(403).json({ message: "Only HQ and operators can delete accounts" }), importLimit, c.remove);
+router.delete("/", (req, res, next) => ["OPERATOR", "HQ_ADMIN", "BRANCH_MANAGER"].includes(req.user.role) ? next() : res.status(403).json({ message: "Only managers, HQ and operators can delete accounts" }), importLimit, c.removeMany);
+router.delete("/:id", (req, res, next) => ["OPERATOR", "HQ_ADMIN", "BRANCH_MANAGER"].includes(req.user.role) ? next() : res.status(403).json({ message: "Only managers, HQ and operators can delete accounts" }), importLimit, c.remove);
 module.exports = router;

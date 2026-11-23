@@ -129,6 +129,7 @@ exports.create = handle(async (req, res) => {
     priority = "MEDIUM",
     branchId,
     zone,
+    escalate,
   } = req.body;
   if (
     typeof title !== "string" ||
@@ -157,20 +158,38 @@ exports.create = handle(async (req, res) => {
       .json({ message: "Site is outside your assigned access" });
   const [respond, resolve] = sla[priority];
   const now = Date.now();
+  const ticketData = {
+    reference: `ENG-${randomUUID().slice(0, 8).toUpperCase()}`,
+    title: title.trim(),
+    description: description.trim(),
+    category,
+    priority,
+    status: "IN_PROGRESS",
+    acknowledgedAt: new Date(now),
+    branchId: branch.id,
+    requesterId: req.user.id,
+    responseDueAt: new Date(now + respond * 3600000),
+    resolutionDueAt: new Date(now + resolve * 3600000),
+  };
+  if (escalate) {
+    const mgr = await prisma.user.findFirst({
+      where: {
+        role: "BRANCH_MANAGER",
+        accessEnabled: true,
+        OR: [
+          { siteIds: { has: branch.id } },
+          { branchId: branch.id },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (mgr) {
+      ticketData.assigneeId = mgr.id;
+      ticketData.escalatedAt = new Date(now);
+    }
+  }
   const ticket = await prisma.ticket.create({
-    data: {
-      reference: `ENG-${randomUUID().slice(0, 8).toUpperCase()}`,
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      priority,
-      status: "IN_PROGRESS",
-      acknowledgedAt: new Date(now),
-      branchId: branch.id,
-      requesterId: req.user.id,
-      responseDueAt: new Date(now + respond * 3600000),
-      resolutionDueAt: new Date(now + resolve * 3600000),
-    },
+    data: ticketData,
     include,
   });
   res.status(201).json(sanitize(ticket, req.user));
@@ -181,7 +200,7 @@ exports.update = handle(async (req, res) => {
     where: { id: req.params.id, ...scope(user) },
   });
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-  const { status, assigneeId, priority, branchId, escalateToHq } = req.body;
+  const { status, assigneeId, priority, branchId, escalateToHq, escalateToManager } = req.body;
   const manager = ["BRANCH_MANAGER", "HQ_ADMIN", "OPERATOR"].includes(
     user.role,
   );
@@ -190,8 +209,8 @@ exports.update = handle(async (req, res) => {
     (assigneeId !== undefined ||
       priority !== undefined ||
       branchId !== undefined ||
-      escalateToHq !== undefined ||
-      !["IN_PROGRESS", "WAITING", "RESOLVED"].includes(status) ||
+      (escalateToHq !== undefined && escalateToManager === undefined) ||
+      (!escalateToManager && !escalateToHq && !["IN_PROGRESS", "WAITING", "RESOLVED"].includes(status)) ||
       completed(ticket) ||
       (ticket.assigneeId && ticket.assigneeId !== user.id))
   )
@@ -286,6 +305,23 @@ exports.update = handle(async (req, res) => {
     });
     if (!hq) fail("No HQ account is available for escalation");
     data.assigneeId = hq.id;
+    data.escalatedAt = now;
+  }
+  if (escalateToManager !== undefined) {
+    if (escalateToManager !== true) fail("Invalid escalation");
+    const mgr = await prisma.user.findFirst({
+      where: {
+        role: "BRANCH_MANAGER",
+        accessEnabled: true,
+        OR: [
+          { siteIds: { has: ticket.branchId } },
+          { branchId: ticket.branchId },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!mgr) fail("No site manager is available for escalation at this branch");
+    data.assigneeId = mgr.id;
     data.escalatedAt = now;
   }
   if (!Object.keys(data).length) fail("No workflow changes provided");

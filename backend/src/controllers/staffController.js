@@ -248,8 +248,8 @@ exports.assignTechnician = handle(async (req, res) => {
 });
 
 function requireDeletionManager(user) {
-  if (!["OPERATOR", "HQ_ADMIN"].includes(user.role))
-    throw Object.assign(new Error("Only HQ and operators can delete accounts"), { status: 403 });
+  if (!["OPERATOR", "HQ_ADMIN", "BRANCH_MANAGER"].includes(user.role))
+    throw Object.assign(new Error("Only managers, HQ and operators can delete accounts"), { status: 403 });
 }
 
 exports.remove = handle(async (req, res) => {
@@ -264,6 +264,8 @@ exports.remove = handle(async (req, res) => {
       throw Object.assign(new Error("User not found or cannot be deleted by your role"), { status: 404 });
     if (target.role === "OPERATOR" || (req.user.role === "HQ_ADMIN" && target.role === "HQ_ADMIN"))
       throw Object.assign(new Error("You cannot delete this account"), { status: 403 });
+    if (req.user.role === "BRANCH_MANAGER" && target.role !== "STAFF")
+      throw Object.assign(new Error("Site managers can only delete technician accounts"), { status: 403 });
     await tx.deletionAudit.create({
       data: auditEntry(req.user, "DELETE_USER", "USER", target.id,
         target.name, userSnapshot(target)),
@@ -291,7 +293,8 @@ exports.removeMany = handle(async (req, res) => {
       where: { id: { in: userIds }, ...allowed },
     });
     if (targets.some((target) => target.role === "OPERATOR" ||
-      (req.user.role === "HQ_ADMIN" && target.role === "HQ_ADMIN")))
+      (req.user.role === "HQ_ADMIN" && target.role === "HQ_ADMIN") ||
+      (req.user.role === "BRANCH_MANAGER" && target.role !== "STAFF")))
       throw Object.assign(new Error("Protected accounts cannot be deleted"), { status: 403 });
     if (targets.length !== userIds.length)
       throw Object.assign(new Error("Some accounts are missing or outside your permission. No accounts were deleted."), { status: 409 });
