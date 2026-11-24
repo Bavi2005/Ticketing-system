@@ -49,7 +49,7 @@ const categories = [
   "HVAC",
   "CCTV",
   "Fire Alarm",
-  "BAS",
+  "CACS",
   "Gas System",
   "Elevator",
 ];
@@ -183,6 +183,7 @@ export default function App() {
   const [staffVersion, setStaffVersion] = useState(0);
   const [page, setPage] = useState(location.hash.slice(1) || "overview");
   const [filters, setFilters] = useState(initialFilters);
+  const [registerSearch, setRegisterSearch] = useState("");
   const [metric, setMetric] = useState("total"),
     [category, setCategory] = useState(null);
   const [data, setData] = useState(null),
@@ -212,6 +213,7 @@ export default function App() {
     setMetadata(null);
     setSelected(null);
     setFilters(initialFilters());
+    setRegisterSearch("");
     setMetric("total");
     setCategory(null);
     setNotice("");
@@ -219,6 +221,7 @@ export default function App() {
     window.location.assign("#overview");
   }, []);
   const navigate = (p) => {
+    setRegisterSearch("");
     window.location.assign(`#${p}`);
     setPage(p);
     setNotice("");
@@ -619,9 +622,13 @@ export default function App() {
             {assignments.length ? assignments.map((ticket) => <button className="assignment-item" key={ticket.id} onClick={() => setSelected(ticket)}><span><b>{ticket.reference}</b> · {ticket.title}</span><span>{label(ticket.status)} · {ticket.branch?.name}</span></button>) : <p className="muted">No active tickets assigned to you.</p>}
           </details>
           {manager && ["overview", "tickets"].includes(page) && <div className="register-filters panel manager-filters">
+            {page === "tickets" && <TicketSearch value={registerSearch} onChange={setRegisterSearch} />}
             <label>Status<select aria-label="Filter tickets by status" value={filters.status || ""} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">All statuses</option>{statuses.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
             <label>Priority<select aria-label="Filter tickets by priority" value={filters.priority || ""} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}><option value="">All priorities</option>{priorities.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
-            <button className="secondary" onClick={() => setFilters({ ...filters, status: "", priority: "" })}>Clear filters</button>
+            <button className="secondary" onClick={() => {
+              setFilters({ ...filters, status: "", priority: "" });
+              setRegisterSearch("");
+            }}>Clear filters</button>
           </div>}
           {page === "users" && manager ? (
             <><StaffSettings
@@ -724,7 +731,7 @@ export default function App() {
                           </div>
                         </>
                       ) : manager && page === "tickets" ? (
-                        category === null ? (
+                        category === null && !registerSearch.trim() ? (
                           <section className="system-selection">
                             <div className="breadcrumb">
                               <button onClick={() => navigate("overview")}>
@@ -775,7 +782,10 @@ export default function App() {
                           <section className="system-results">
                             <button
                               className="back-to-systems"
-                              onClick={() => setCategory(null)}
+                              onClick={() => {
+                                setCategory(null);
+                                setRegisterSearch("");
+                              }}
                             >
                               <ArrowLeft size={18} /> Back to systems
                             </button>
@@ -790,16 +800,16 @@ export default function App() {
                             <TicketList
                               tickets={data.tickets.filter(
                                 (ticket) =>
-                                  !category || ticket.category === category,
+                                  (!category || ticket.category === category) &&
+                                  matchesTicketSearch(ticket, registerSearch),
                               )}
                               open={setSelected}
-                              userRole={session.user.role}
                               compact
                             />
                           </section>
                         )
                       ) : page === "tickets" ? (
-                        <TicketList tickets={data.tickets} open={setSelected} userRole={session.user.role} />
+                        <TicketList tickets={data.tickets} open={setSelected} />
                       ) : null}
                     </div>
                   )
@@ -836,7 +846,6 @@ export default function App() {
           manager={manager}
           canDelete={hq || operator}
           userId={session.user.id}
-          userRole={session.user.role}
           metadata={metadata}
           headers={headers}
           close={() => setSelected(null)}
@@ -1305,7 +1314,25 @@ function SlaHealth({ summary, resolution = false }) {
     </section>
   );
 }
-function TicketList({ tickets, open, compact, userRole }) {
+function matchesTicketSearch(ticket, search) {
+  return [ticket.reference, ticket.title, ticket.branch?.name, ticket.category]
+    .join(" ").toLowerCase().includes(search.trim().toLowerCase());
+}
+function TicketSearch({ value, onChange }) {
+  return (
+    <div className="search-input">
+      <Search size={16} />
+      <input
+        type="search"
+        aria-label="Search tickets"
+        placeholder="Search reference, title, site or system"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+function TicketList({ tickets, open, compact }) {
   const [search, setSearch] = useState(""),
     [status, setStatus] = useState(""),
     [priority, setPriority] = useState("");
@@ -1313,23 +1340,13 @@ function TicketList({ tickets, open, compact, userRole }) {
     (t) =>
       (!status || t.status === status) &&
       (!priority || t.priority === priority) &&
-      `${t.reference} ${t.title} ${t.branch?.name}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
+      matchesTicketSearch(t, search),
   );
   return (
     <section className="panel ticket-panel">
       {!compact && (
         <div className="register-filters">
-          <div className="search-input">
-            <Search size={16} />
-            <input
-              aria-label="Search tickets"
-              placeholder="Search reference, title, site…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <TicketSearch value={search} onChange={setSearch} />
           <select
             aria-label="Status filter"
             value={status}
@@ -1400,7 +1417,7 @@ function TicketList({ tickets, open, compact, userRole }) {
                   </span>
                 </td>
                 <td data-label="SLA">
-                  <span className={t.slaMissed ? "sla-missed" : "sla-within"}>
+                  <span className={`sla-badge ${t.slaMissed ? "sla-missed" : "sla-within"}`}>
                     {t.slaMissed
                       ? "Missed SLA"
                       : ["RESOLVED", "CLOSED"].includes(t.status)
@@ -1441,7 +1458,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     priority: "MEDIUM",
     zone: null,
     branchId: user.branchId || "",
-    escalate: false,
+    escalationTarget: "",
   });
   const [files, setFiles] = useState([]);
   const [error, setError] = useState(""),
@@ -1463,7 +1480,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
       fd.append("priority", form.priority);
       fd.append("zone", effectiveZone);
       fd.append("branchId", form.branchId);
-      if (form.escalate) fd.append("escalate", "true");
+      if (form.escalationTarget) fd.append("escalationTarget", form.escalationTarget);
       files.forEach((f) => fd.append("attachments", f));
       const { data } = await api.post(
         "/api/tickets",
@@ -1600,14 +1617,13 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
             ))}
           </div>
         )}
-        <label className="checkbox" style={{ cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={form.escalate}
-            onChange={(e) => setForm({ ...form, escalate: e.target.checked })}
-          />
-          <AlertTriangle size={16} style={{ color: "var(--severity-high)" }} />
-          Escalate immediately to site manager
+        <label>
+          Escalation
+          <select {...field("escalationTarget")}>
+            <option value="">No escalation</option>
+            <option value="HQ">HQ</option>
+            <option value="SITE_MANAGER">Site manager</option>
+          </select>
         </label>
         <div className="form-actions">
           <button type="button" className="secondary" onClick={cancel}>
@@ -1658,7 +1674,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
     </div>
   );
 }
-function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, headers, close, changed }) {
+function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, close, changed }) {
   const [current, setCurrent] = useState(ticket),
     [status, setStatus] = useState(ticket.status),
     [assignment, setAssignment] = useState(ticket.assigneeId || ""),
@@ -1671,6 +1687,12 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
   const dialog = useRef(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const technicians = metadata?.assignees?.filter((user) => user.role === "STAFF") || [];
+  const assignmentChanges = {
+    ...(assignment !== (current.assigneeId || "") && { assigneeId: assignment }),
+    ...(priority !== current.priority && { priority }),
+    ...(branch !== current.branchId && { branchId: branch }),
+  };
   useEffect(() => {
     // Synchronise the open detail view with freshly polled server data.
     // eslint-disable-next-line react/set-state-in-effect
@@ -1689,23 +1711,20 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
     setBusy(true);
     setError("");
     try {
-      if (["status", "assignment", "escalate", "escalate-manager"].includes(type))
-        setCurrent(
-          (
-            await api.patch(
-              `/api/tickets/${current.id}`,
-              type === "status"
-                ? { status }
-                : type === "escalate"
-                  ? { escalateToHq: true }
-                  : type === "escalate-manager"
-                    ? { escalateToManager: true }
-                    : { assigneeId: assignment, priority, branchId: branch },
-              { headers },
-            )
-          ).data,
-        );
-      else {
+      if (type !== "comment") {
+        const changes = {
+          status: { status },
+          assignment: assignmentChanges,
+          escalate: { escalateToHq: true },
+          "escalate-manager": { escalateToManager: true },
+        };
+        const { data } = await api.patch(`/api/tickets/${current.id}`, changes[type], { headers });
+        setCurrent(data);
+        setStatus(data.status);
+        setAssignment(data.assigneeId || "");
+        setBranch(data.branchId);
+        setPriority(data.priority);
+      } else {
         const fd = new FormData();
         fd.append("message", comment);
         fd.append("internal", "false");
@@ -1789,7 +1808,7 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
           Raised by<b>{current.requester?.name || "Deleted user"}</b>
         </div>
         <div>
-          Assigned to<b>{current.assignee ? `${current.assignee.name}${current.assignee.role === "HQ_ADMIN" ? " (HQ)" : ""}` : "You"}</b>
+          Assigned to<b>{current.assignee ? `${current.assignee.name}${current.assignee.role === "HQ_ADMIN" ? " (HQ)" : ""}` : "Unassigned"}</b>
         </div>
         {current.resolvedAt && (
           <div>
@@ -1846,14 +1865,15 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
           >
             <AlertTriangle size={16} /> Escalate to manager
           </button>
-          <button
+          {(!current.assigneeId || current.assigneeId === userId) &&
+            (current.requesterId === userId || current.assigneeId === userId) && <button
             type="button"
             className="secondary"
             disabled={busy}
             onClick={() => save("escalate")}
           >
             <AlertTriangle size={16} /> Escalate to HQ
-          </button>
+          </button>}
         </div>
       )}
       {current.waitingSince && (
@@ -1905,18 +1925,21 @@ function TicketModal({ ticket, manager, canDelete, userId, userRole, metadata, h
               onChange={(e) => setAssignment(e.target.value)}
             >
               <option value="">Unassigned</option>
-              {metadata?.assignees
-                ?.map((u) => (
+              {current.assigneeId && !technicians.some((user) => user.id === current.assigneeId) &&
+                <option value={current.assigneeId}>Keep current assignment</option>}
+              {technicians.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.name}
-                    {u.role === "HQ_ADMIN" ? " (HQ)" : ""}
                   </option>
                 ))}
             </select>
           </label>
           <div className="staff-actions">
-            <button className="primary" disabled={busy}>
+            <button className="primary" disabled={busy || !Object.keys(assignmentChanges).length}>
               Save assignment
+            </button>
+            <button type="button" className="secondary" disabled={busy || current.assignee?.role === "HQ_ADMIN"} onClick={() => save("escalate")}>
+              Assign to HQ
             </button>
           </div>
         </form>

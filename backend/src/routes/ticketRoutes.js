@@ -11,7 +11,7 @@ router.get("/deletion-log", c.deletionLog);
 router.delete("/", c.deleteAll);
 router.get("/dashboard", c.dashboard);
 router.get("/", c.list);
-router.post("/", ...withAttachments, c.create);
+router.post("/", ticketUpload.array("attachments", 5), c.create);
 router.patch("/:id", c.update);
 router.delete("/:id", c.deleteOne);
 router.post("/:id/comments", ...withAttachments, c.comment);

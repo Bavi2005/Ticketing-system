@@ -6,11 +6,11 @@ import { roleName } from "../utils/roles";
 const blank = { name: "", email: "", password: "", role: "STAFF", site_code: "", region: "", accessEnabled: true, siteIds: [], regionAccess: [], allSites: false };
 
 function SiteChoices({ sites, value, onChange, allSites, onAllSites }) {
-  const [sort, setSort] = useState("name");
+  const [sort, setSort] = useState("region");
   const compare = (a, b) => String(a || "").localeCompare(String(b || ""), "en", { numeric: true, sensitivity: "base" });
   const sortedSites = [...sites].sort((a, b) => (sort === "region" ? compare(a.zone, b.zone) : 0) || compare(a.name, b.name) || compare(a.code, b.code) || compare(a.id, b.id));
   return <fieldset><legend>Sites</legend>
-    <label>Sort sites<select value={sort} onChange={e => setSort(e.target.value)}><option value="name">Site name · A–Z</option><option value="region">Region, then site name · A–Z</option></select></label>
+    <label>Sort sites<select value={sort} onChange={e => setSort(e.target.value)}><option value="region">Region, then site name · A–Z</option><option value="name">Site name · A–Z</option></select></label>
     {onAllSites && <label className="access-toggle"><input type="checkbox" checked={allSites} onChange={e => onAllSites(e.target.checked)}/> All sites · across all regions</label>}
     {!allSites && sortedSites.map(site => <label className="access-toggle" key={site.id}><input type="checkbox" checked={value.includes(site.id)} onChange={e => onChange(e.target.checked ? [...value, site.id] : value.filter(id => id !== site.id))}/>{site.zone} · {site.name}</label>)}
   </fieldset>;

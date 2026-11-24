@@ -2,11 +2,12 @@ const categories = [
   "HVAC",
   "CCTV",
   "Fire Alarm",
-  "BAS",
+  "CACS",
   "Gas System",
   "Elevator",
 ];
 const { regions } = require("./sites");
+const categoryName = (category) => category === "BAS" ? "CACS" : category;
 // Retain stored field names for existing databases; UI uses region/site exclusively.
 const zones = regions;
 const statuses = ["IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"];
@@ -56,8 +57,9 @@ function filters(query, user) {
     where.priority = query.priority;
   }
   if (query.category) {
-    if (!categories.includes(query.category)) fail("Invalid service category");
-    where.category = query.category;
+    const category = categoryName(query.category);
+    if (!categories.includes(category)) fail("Invalid service category");
+    where.category = category === "CACS" ? { in: ["CACS", "BAS"] } : category;
   }
   if (query.zone && !zones.includes(query.zone)) fail("Invalid region");
   if (
@@ -107,6 +109,7 @@ function matches(t, query, now) {
 module.exports = {
   siteIdsOf, regionsOf, siteScope, canAccessSite,
   categories,
+  categoryName,
   zones,
   statuses,
   sla,

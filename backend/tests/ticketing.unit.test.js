@@ -213,6 +213,42 @@ test("invalid category and prototype priority values cannot create tickets", asy
   }
   expect(prisma.ticket.create).not.toHaveBeenCalled();
 });
+test("existing BAS tickets appear alongside new CACS tickets", async () => {
+  prisma.ticket.findMany.mockResolvedValue([{ ...ticket, category: "BAS" }, { ...ticket, category: "CACS" }]);
+  const list = await request(app).get("/tickets?category=CACS");
+  expect(list.body.map((item) => item.category)).toEqual(["CACS", "CACS"]);
+  expect(prisma.ticket.findMany.mock.lastCall[0].where.category).toEqual({ in: ["CACS", "BAS"] });
+  const dashboard = await request(app).get("/dashboard");
+  expect(dashboard.body.categories.find((item) => item.name === "CACS").count).toBe(2);
+});
+test("assignment metadata lists active technicians only", async () => {
+  const result = await request(app).get("/metadata").set("x-role", "BRANCH_MANAGER");
+  expect(result.status).toBe(200);
+  expect(prisma.user.findMany.mock.lastCall[0].where).toEqual({ role: "STAFF", accessEnabled: true });
+});
+test.each([["HQ", "HQ_ADMIN"], ["SITE_MANAGER", "BRANCH_MANAGER"]])(
+  "ticket creation routes an escalation to %s",
+  async (escalationTarget, role) => {
+    prisma.branch.findUnique.mockResolvedValue({ id: "pahang", zone: "CENTRAL" });
+    prisma.user.findFirst.mockResolvedValueOnce({ id: "recipient" });
+    prisma.ticket.create.mockResolvedValue(ticket);
+    // Parse the real multipart field payload at the same boundary as the ticket router.
+    const multipartApp = express();
+    multipartApp.use(require("multer")().none(), app);
+    const create = () => request(multipartApp).post("/tickets")
+      .field("title", "System failure").field("description", "Please inspect")
+      .field("category", "CACS").field("zone", "CENTRAL").field("escalationTarget", escalationTarget);
+    expect((await create()).status).toBe(201);
+    const { where } = prisma.user.findFirst.mock.lastCall[0];
+    expect(where).toMatchObject({ role, accessEnabled: true });
+    if (role === "BRANCH_MANAGER") expect(where.OR).toContainEqual({ regionAccess: { has: "CENTRAL" } });
+    expect(prisma.ticket.create.mock.lastCall[0].data).toMatchObject({
+      category: "CACS", assigneeId: "recipient", escalatedAt: expect.any(Date),
+    });
+    expect((await create()).status).toBe(400);
+    expect(prisma.ticket.create).toHaveBeenCalledTimes(1);
+  },
+);
 test("out-of-scope IDs cannot be updated or commented on", async () => {
   prisma.ticket.findFirst.mockResolvedValue(null);
   expect(

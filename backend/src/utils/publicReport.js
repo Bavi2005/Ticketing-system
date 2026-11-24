@@ -1,3 +1,4 @@
+const { categoryName } = require("./ticketing");
 const localDate = (value) => new Date(new Date(value).getTime() + 8 * 3600000).toISOString().slice(0, 10);
 function publicReport(tickets, latest, now = new Date()) {
   const today = localDate(now), year = today.slice(0, 4), month = today.slice(0, 7);
@@ -19,7 +20,7 @@ function publicReport(tickets, latest, now = new Date()) {
     generatedAt: now, year: Number(year), month, yearly, monthly, weekly,
     totals: { opened: yearly.reduce((n, b) => n + b.opened, 0), closed: yearly.reduce((n, b) => n + b.closed, 0) },
     // Whitelist only public operational facts; never expose identity or comment content.
-    latest: latest.map((ticket) => ({ category: ticket.category, status: ticket.status, site: ticket.branch?.name || "Unassigned", region: ticket.branch?.zone || "", openedAt: ticket.createdAt, resolvedAt: ticket.resolvedAt, closedAt: ticket.closedAt,
+    latest: latest.map((ticket) => ({ category: categoryName(ticket.category), status: ticket.status, site: ticket.branch?.name || "Unassigned", region: ticket.branch?.zone || "", openedAt: ticket.createdAt, resolvedAt: ticket.resolvedAt, closedAt: ticket.closedAt,
       resolutionHours: ticket.resolvedAt ? Math.max(0, Math.round((new Date(ticket.resolvedAt) - new Date(ticket.createdAt)) / 360000) / 10) : null,
     })),
   };

@@ -3853,6 +3853,7 @@ textarea {
 .assignment-item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; width: 100%; padding: 14px 0; text-align: left; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); }
 .manager-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; }
 .manager-filters label { flex: 1; min-width: 160px; }
+.manager-filters .search-input { flex-basis: 100%; }
 .operator-data-settings { margin-top: 24px; }
 .operator-data-settings > p { margin: 12px 0; line-height: 1.6; }
 .operator-data-settings .staff-actions { flex-wrap: wrap; }
@@ -4387,5 +4388,20 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
 
 /* Ticket SLA column severity coloring */
 .sla-met { color: var(--severity-low); font-weight: 600; }
-.sla-missed { color: var(--severity-critical); font-weight: 700; }
-.sla-within { color: var(--severity-low); }
+.sla-badge {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sla-missed {
+  background: var(--severity-critical-bg);
+  color: var(--severity-critical-text);
+  border: 1px solid var(--severity-critical-border);
+}
+.sla-within {
+  background: var(--severity-low-bg);
+  color: var(--severity-low-text);
+  border: 1px solid var(--severity-low-border);
+}
