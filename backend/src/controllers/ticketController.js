@@ -64,13 +64,14 @@ const handle = (fn) => async (req, res, next) => {
 };
 exports.metadata = handle(async (req, res) => {
   const branchWhere = siteScope(req.user);
+  const orderBy = [{ createdAt: "asc" }, { id: "asc" }];
   const branches = await prisma.branch.findMany({
     where: branchWhere,
-    orderBy: { name: "asc" },
+    orderBy,
   });
   const submissionBranches = branches;
   const assignmentBranches = req.user.role === "BRANCH_MANAGER"
-    ? await prisma.branch.findMany({ orderBy: { name: "asc" } }) : branches;
+    ? await prisma.branch.findMany({ orderBy }) : branches;
   const assignees =
     req.user.role === "STAFF"
       ? []
@@ -79,7 +80,7 @@ exports.metadata = handle(async (req, res) => {
             accessEnabled: true,
             role: "STAFF",
           },
-          select: { id: true, name: true, role: true, branchId: true },
+          select: { id: true, name: true, role: true, branchId: true, zone: true, allSites: true, branch: { select: { zone: true } } },
           orderBy: { name: "asc" },
         });
   res.json({
@@ -415,8 +416,8 @@ const deletionInclude = {
 };
 
 exports.deletionLog = handle(async (req, res) => {
-  if (!["HQ_ADMIN", "OPERATOR"].includes(req.user.role))
-    return res.status(403).json({ message: "Deletion history is restricted to HQ and operators" });
+  if (!["BRANCH_MANAGER", "HQ_ADMIN", "OPERATOR"].includes(req.user.role))
+    return res.status(403).json({ message: "Deletion history is restricted to site managers, HQ and operators" });
   res.json(await prisma.deletionAudit.findMany({
     orderBy: { createdAt: "desc" },
     take: 100,

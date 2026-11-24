@@ -39,6 +39,7 @@ import {
 import "./App.css";
 import PasswordInput from "./components/PasswordInput";
 import { roleName } from "./utils/roles";
+import { compareNames, groupAccountsByRegion, groupByRegion } from "./utils/regionSorting";
 import StaffSettings from "./components/StaffSettings";
 import OperatorDataSettings from "./components/OperatorDataSettings";
 import OperatorControlCenter from "./components/OperatorControlCenter";
@@ -1201,9 +1202,9 @@ function MyDashboard({ tickets, summary, open, onFilter }) {
   );
 }
 function ScopePanel({ metadata, filters, setFilters, hq }) {
-  const branches = (metadata?.branches || []).filter(
+  const branches = groupByRegion((metadata?.branches || []).filter(
     (branch) => !filters.zone || branch.zone === filters.zone,
-  );
+  )).flatMap(([, sites]) => sites);
   return (
     <section className="panel dashboard-scope" aria-label="Operational scope">
       <div className="dashboard-scope-head">
@@ -1226,7 +1227,7 @@ function ScopePanel({ metadata, filters, setFilters, hq }) {
             <MapPin size={15} /> REGIONS
           </div>
           <div className="zone-list">
-            {["", ...(metadata?.zones || [])].map((zone) => (
+            {["", ...(metadata?.zones || [])].sort(compareNames).map((zone) => (
               <button
                 key={zone}
                 className={filters.zone === zone ? "active" : ""}
@@ -1561,7 +1562,7 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
               <option value="" disabled>
                 Select region
               </option>
-              {[...(metadata?.zones || [])].sort().map((z) => (
+              {[...(metadata?.zones || [])].sort(compareNames).map((z) => (
                 <option key={z}>{z}</option>
               ))}
             </select>
@@ -1579,7 +1580,6 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
               </option>
               {[...(metadata?.submissionBranches || [])]
                 .filter((b) => b.zone === effectiveZone)
-                .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                 .map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -1588,6 +1588,14 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
             </select>
           </label>
         </div>
+        <label>
+          Escalation
+          <select {...field("escalationTarget")}>
+            <option value="">No escalation</option>
+            <option value="HQ">HQ</option>
+            <option value="SITE_MANAGER">Site manager</option>
+          </select>
+        </label>
         <label>
           Issue details
           <textarea
@@ -1617,14 +1625,6 @@ function TicketForm({ metadata, user, headers, done, cancel }) {
             ))}
           </div>
         )}
-        <label>
-          Escalation
-          <select {...field("escalationTarget")}>
-            <option value="">No escalation</option>
-            <option value="HQ">HQ</option>
-            <option value="SITE_MANAGER">Site manager</option>
-          </select>
-        </label>
         <div className="form-actions">
           <button type="button" className="secondary" onClick={cancel}>
             Cancel
@@ -1688,6 +1688,7 @@ function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, cl
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const technicians = metadata?.assignees?.filter((user) => user.role === "STAFF") || [];
+  const technicianGroups = groupAccountsByRegion(technicians);
   const assignmentChanges = {
     ...(assignment !== (current.assigneeId || "") && { assigneeId: assignment }),
     ...(priority !== current.priority && { priority }),
@@ -1899,10 +1900,10 @@ function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, cl
                   setAssignment("");
                 }}
               >
-                {[...(metadata?.branches || [])].sort((a, b) => (a.zone || "").localeCompare(b.zone || "") || (a.name || "").localeCompare(b.name || "")).map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.zone} · {b.name}
-                  </option>
+                {groupByRegion(metadata?.branches || []).map(([region, sites]) => (
+                  <optgroup key={region} label={region}>
+                    {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -1927,11 +1928,11 @@ function TicketModal({ ticket, manager, canDelete, userId, metadata, headers, cl
               <option value="">Unassigned</option>
               {current.assigneeId && !technicians.some((user) => user.id === current.assigneeId) &&
                 <option value={current.assigneeId}>Keep current assignment</option>}
-              {technicians.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
+              {technicianGroups.map(([region, accounts]) => (
+                <optgroup key={region} label={region}>
+                  {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                </optgroup>
+              ))}
             </select>
           </label>
           <div className="staff-actions">

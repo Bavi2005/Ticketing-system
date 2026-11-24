@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { accountRegion, groupAccountsByRegion } from "../utils/regionSorting";
 
 export default function OperatorDataSettings({ api, headers, changed }) {
   const [action, setAction] = useState(null);
@@ -35,7 +36,10 @@ export default function OperatorDataSettings({ api, headers, changed }) {
     } catch (e) { setError(e.response?.data?.message || "Deletion failed. Please retry."); }
     finally { setBusy(false); }
   };
-  const visible = accounts.filter((account) => `${account.name} ${account.email} ${account.branch?.name || ""}`.toLowerCase().includes(search.toLowerCase()));
+  const groups = groupAccountsByRegion(accounts.filter((account) =>
+    `${account.name} ${account.email} ${account.branch?.name || ""} ${accountRegion(account)}`.toLowerCase().includes(search.trim().toLowerCase()),
+  ));
+  const visible = groups.flatMap(([, users]) => users);
   const changeSelection = (next) => { setSelected(next); setConfirmation(""); };
   const toggle = (id) => changeSelection(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
   return <section className="panel operator-data-settings" aria-label="Operator data settings">
@@ -55,10 +59,13 @@ export default function OperatorDataSettings({ api, headers, changed }) {
           </div>
           <p role="status">{selected.length} selected of {accounts.length} users{search ? "; search does not clear previous selections" : ""}.</p>
           <div className="bulk-user-list" role="group" aria-label="Users to delete">
-            {visible.map((account) => <label className="bulk-user-option" key={account.id}>
+            {groups.map(([region, users]) => <section key={region}>
+              <h3>{region}</h3>
+              {users.map((account) => <label className="bulk-user-option" key={account.id}>
               <input type="checkbox" checked={selected.includes(account.id)} disabled={busy} onChange={() => toggle(account.id)} />
               <span><b>{account.name}</b><small>{account.email} · {account.branch?.name || "All sites"}</small></span>
-            </label>)}
+              </label>)}
+            </section>)}
             {!visible.length && <p className="muted">{busy ? "Loading users…" : "No users found."}</p>}
           </div>
         </div>}

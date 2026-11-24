@@ -3780,8 +3780,77 @@ textarea {
 .access-list-head, .report-intro, .report-panel-head, .public-report-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .access-list-head h2 { margin: 10px 0 6px; }
 .access-list-head p { font-size: 16px; line-height: 1.6; }
-.access-search { display: flex; align-items: center; gap: 10px; margin: 22px 0; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; }
-.access-search input { border: 0; margin: 0; background: transparent; }
+.access-list-head .staff-actions { justify-content: flex-end; gap: 8px; }
+.access-list-head .staff-actions button, .access-accounts-table .staff-actions button {
+  min-height: 44px;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+.access-search { display: grid; gap: 7px; width: min(100%, 420px); margin: 22px 0 16px; }
+.access-search > label { margin: 0; font-size: 14px; }
+.access-search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding-inline: 12px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-muted);
+}
+.access-search-field:focus-within { border-color: var(--text-purple); outline: 2px solid var(--text-purple); outline-offset: 2px; }
+.access-search-field > svg { flex: 0 0 auto; }
+.access-search-field input, .access-search-field input:focus {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  margin: 0;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: 16px;
+}
+.access-search-field input::-webkit-search-cancel-button { display: none; }
+.access-search-clear {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--text-muted);
+}
+.access-search-clear:hover { background: var(--surface-soft); color: var(--text-purple); }
+.deletion-log-panel > summary { cursor: pointer; font-size: 18px; font-weight: 700; }
+.deletion-log-panel > summary > span { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: 4px; }
+.deletion-log-panel > p { margin-top: 12px; }
+.deletion-log-panel td { overflow-wrap: anywhere; }
+.deletion-snapshot > summary { cursor: pointer; color: var(--text-purple); font-weight: 600; }
+.deletion-snapshot pre {
+  max-height: 260px;
+  margin: 8px 0 0;
+  padding: 12px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--surface-soft);
+  border-radius: 8px;
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .access-list-head .staff-actions { justify-content: flex-start; }
+  .deletion-log-panel .staff-table-scroll, .access-accounts-table { max-height: none; overflow: visible; }
+  :is(.deletion-log-panel, .access-accounts-table) :is(table, tbody) { display: block; }
+  :is(.deletion-log-panel, .access-accounts-table) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  :is(.deletion-log-panel, .access-accounts-table) tbody tr { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; }
+  :is(.deletion-log-panel, .access-accounts-table) tr + tr { margin-top: 10px; }
+  :is(.deletion-log-panel, .access-accounts-table) td { display: block; padding: 0; border: 0; font-size: 14px; overflow-wrap: anywhere; }
+  :is(.deletion-log-panel, .access-accounts-table) td[data-label] { display: grid; grid-template-columns: 4em minmax(0, 1fr); gap: 8px; justify-items: start; align-items: baseline; }
+  :is(.deletion-log-panel, .access-accounts-table) td[data-label]::before { content: attr(data-label); color: var(--text-muted); }
+  .access-accounts-table .staff-actions { margin-top: 6px; }
+}
 .access-state { display: inline-flex; border-radius: 999px; padding: 5px 9px; font-size: 16px; font-weight: 700; }
 .access-state.enabled { background: #e9f7ef; color: #187048; }
 .access-state.disabled { background: #fff0f0; color: #a43842; }
@@ -3791,6 +3860,8 @@ textarea {
 .access-dialog h2 { padding-right: 30px; margin: 10px 0 22px; font-size: 23px; }
 .access-editor, .access-bulk { display: grid; gap: 14px; }
 .access-editor .staff-actions { justify-content: flex-end; margin-top: 14px; }
+.access-editor .site-region { min-width: 0; margin-top: 12px; }
+.access-editor .site-region legend { font-weight: 700; }
 .access-editor .access-toggle { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
 .access-toggle input { width: 18px; height: 18px; margin: 0; }
 .access-toggle small { display: block; margin-top: 5px; color: var(--text-muted); line-height: 1.5; }
@@ -4037,7 +4108,7 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
     width: 100%;
     gap: 9px;
     padding: 10px 9px;
-    font-size: 14px;
+    font-size: 18px;
     line-height: 1.35;
     white-space: normal;
   }
@@ -4065,7 +4136,7 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
   }
   .sidebar nav, .sidebar-collapsed .sidebar nav { max-width: 100vw; }
   .sidebar nav button, .sidebar-collapsed .sidebar nav button { min-width: 0; }
-  .sidebar nav button span:not(.nav-dot) { font-size: clamp(12px, 3vw, 15px); }
+  .sidebar nav button span:not(.nav-dot) { font-size: clamp(14px, 3.5vw, 17px); }
   .content { width: 100%; padding: 14px 12px; }
   .metric-cards, .dashboard-layout, .operator-overview-grid { min-width: 0; max-width: 100%; }
 }
@@ -4123,6 +4194,7 @@ html, body, #root { min-width: 0; width: 100%; max-width: 100%; }
 
 .bulk-user-picker { display: grid; gap: 12px; min-width: 0; }
 .bulk-user-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; }
+.bulk-user-list h3 { padding: 10px 12px; background: var(--surface-soft); font-size: 14px; }
 .bulk-user-list .bulk-user-option { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .bulk-user-option input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 20px; }
 .bulk-user-option span { min-width: 0; overflow-wrap: anywhere; }

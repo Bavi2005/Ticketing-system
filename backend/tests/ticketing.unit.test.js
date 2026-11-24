@@ -567,14 +567,19 @@ test("archive failure prevents any ticket deletion", async () => {
   expect(prisma.ticket.delete).not.toHaveBeenCalled();
 });
 
-test("only HQ and operator can read deletion history", async () => {
-  for (const role of ["STAFF", "BRANCH_MANAGER"])
-    expect((await request(app).get("/deletion-log").set("x-role", role)).status).toBe(403);
-  prisma.deletionAudit.findMany.mockResolvedValue([]);
-  expect((await request(app).get("/deletion-log").set("x-role", "HQ_ADMIN")).status).toBe(200);
-  expect(prisma.deletionAudit.findMany).toHaveBeenCalledWith({
-    take: 100, orderBy: { createdAt: "desc" },
-  });
+test("site managers, HQ and operators can read deletion history", async () => {
+  expect((await request(app).get("/deletion-log").set("x-role", "STAFF")).status).toBe(403);
+  expect(prisma.deletionAudit.findMany).not.toHaveBeenCalled();
+  const history = [{ id: "deleted-ticket", subjectType: "TICKET" }, { id: "deleted-user", subjectType: "USER" }];
+  prisma.deletionAudit.findMany.mockResolvedValue(history);
+  for (const role of ["BRANCH_MANAGER", "HQ_ADMIN", "OPERATOR"]) {
+    const result = await request(app).get("/deletion-log").set("x-role", role);
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual(history);
+    expect(prisma.deletionAudit.findMany).toHaveBeenLastCalledWith({
+      take: 100, orderBy: { createdAt: "desc" },
+    });
+  }
 });
 
 test("operator bulk deletion archives every ticket; HQ cannot bulk-delete all", async () => {
