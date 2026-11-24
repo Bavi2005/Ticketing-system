@@ -94,7 +94,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
     finally { setBusy(false); }
   };
   const loadDeletionLog = async () => {
-    if (!canDelete) return;
+    if (!operator) return;
     try {
       const { data } = await api.get("/api/tickets/deletion-log", { headers });
       setDeletionLog(data); setLogError("");
@@ -165,7 +165,7 @@ export default function StaffSettings({ api, headers, user, metadata }) {
       </table></div>}
       {!visible.length && <p className="access-empty muted">{loading ? "Loading account access…" : "No accounts match this list."}</p>}
     </section>
-    {canDelete && <details className="panel deletion-log-panel" onToggle={(event) => { if (event.currentTarget.open) loadDeletionLog(); }}>
+    {operator && <details className="panel deletion-log-panel" onToggle={(event) => { if (event.currentTarget.open) loadDeletionLog(); }}>
       <summary><span><History size={18} aria-hidden="true"/> Deletion history</span></summary>
       <p className="muted">Up to 100 recent deletions. Includes the actor, timestamp and a saved snapshot. History remains even when an account or ticket no longer exists.</p>
       {logError && <p className="error" role="alert">{logError}</p>}

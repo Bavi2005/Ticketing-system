@@ -416,8 +416,8 @@ const deletionInclude = {
 };
 
 exports.deletionLog = handle(async (req, res) => {
-  if (!["BRANCH_MANAGER", "HQ_ADMIN", "OPERATOR"].includes(req.user.role))
-    return res.status(403).json({ message: "Deletion history is restricted to site managers, HQ and operators" });
+  if (req.user.role !== "OPERATOR")
+    return res.status(403).json({ message: "Deletion history is restricted to operators" });
   res.json(await prisma.deletionAudit.findMany({
     orderBy: { createdAt: "desc" },
     take: 100,
